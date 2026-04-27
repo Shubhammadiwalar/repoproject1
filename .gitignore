@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Model weights (too large for GitHub)
+*.pt
+*.pth
+*.onnx
+
+# Dataset images (large)
+train/
+val/
+test/
+
+# Generated outputs
+predictions/
+predictions_test/
+label_preview/
+labels/
+
+# YOLO runs (large)
+runs/
+
+# Misc
+*.cache
+*.log
+yolo26n.pt
+yolov8m.pt
+.vscode/

@@ -1,0 +1,12 @@
+                   precision    recall  f1-score   support
+
+        Bird-drop       1.00      1.00      1.00        17
+            Clean       0.94      0.94      0.94        18
+            Dusty       0.94      1.00      0.97        16
+Electrical-damage       1.00      0.92      0.96        13
+  Physical-Damage       1.00      1.00      1.00        15
+     Snow-Covered       1.00      1.00      1.00        16
+
+         accuracy                           0.98        95
+        macro avg       0.98      0.98      0.98        95
+     weighted avg       0.98      0.98      0.98        95
