@@ -427,7 +427,33 @@ $("clearHistoryBtn").addEventListener("click", () => {
 
 // ── Init ──────────────────────────────────────────────────────
 (async function init() {
+  // Check auth first — redirect to login if not authenticated
+  try {
+    const r = await fetch(`${CONFIG.API_BASE}/api/auth/me`, { credentials: "include" });
+    if (r.status === 401) { window.location.href = "/login.html"; return; }
+    const user = await r.json();
+    // Show user name in topbar
+    const nameEl = document.getElementById("topbar-username");
+    if (nameEl) nameEl.textContent = user.name || "User";
+    document.querySelector(".user-name").textContent = user.name || "SolarScan";
+    document.querySelector(".user-role").textContent = user.email || "";
+  } catch {
+    // Backend might be loading — continue anyway
+  }
+
   await Promise.all([checkHealth(), loadClasses()]);
   refreshDashboard();
-  window.addEventListener("resize", () => { if(document.getElementById("page-dashboard").classList.contains("active")) drawBarChart(); });
+  window.addEventListener("resize", () => {
+    if (document.getElementById("page-dashboard").classList.contains("active")) drawBarChart();
+  });
+
+  // Logout
+  const logoutBtn = document.getElementById("logoutBtn");
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      await fetch(`${CONFIG.API_BASE}/api/auth/logout`, { method: "POST", credentials: "include" });
+      window.location.href = "/login.html";
+    });
+  }
 })();

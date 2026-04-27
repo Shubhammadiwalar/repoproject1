@@ -1,0 +1,280 @@
+/* ═══════════════════════════════════════════════════════════════
+   SolarScan  –  Auth Pages (Login / Signup)
+   Inspired by Sleeknote: split layout, white left, soft-blue right
+   ═══════════════════════════════════════════════════════════════ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --purple:    #7C3AED;
+  --purple-lt: #EDE9FE;
+  --purple-dk: #5B21B6;
+  --white:     #FFFFFF;
+  --bg-right:  #EEF2FF;
+  --border:    #E5E7EB;
+  --text:      #111827;
+  --text-2:    #6B7280;
+  --text-3:    #9CA3AF;
+  --red:       #EF4444;
+  --red-lt:    #FEF2F2;
+  --green:     #10B981;
+  --green-lt:  #ECFDF5;
+  --r:         10px;
+  --sh:        0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
+  --sh-focus:  0 0 0 3px rgba(124,58,237,.18);
+}
+
+html, body {
+  height: 100%;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background: var(--bg-right);
+}
+
+/* ── Shell ────────────────────────────────────────────────── */
+.auth-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ── Left panel ───────────────────────────────────────────── */
+.auth-left {
+  flex: 0 0 480px;
+  background: var(--white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 40px;
+  box-shadow: 4px 0 24px rgba(0,0,0,.06);
+  position: relative;
+  z-index: 1;
+}
+@media (max-width: 860px) {
+  .auth-left  { flex: 1; }
+  .auth-right { display: none; }
+}
+
+.auth-form-wrap {
+  width: 100%;
+  max-width: 360px;
+}
+
+/* ── Logo ─────────────────────────────────────────────────── */
+.auth-logo {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 32px;
+}
+.auth-logo-icon {
+  width: 38px; height: 38px; border-radius: 10px;
+  background: var(--purple);
+  display: flex; align-items: center; justify-content: center;
+}
+.auth-logo-icon svg { width: 20px; height: 20px; }
+.auth-logo-text {
+  font-size: 1.15rem; font-weight: 800;
+  color: var(--text); letter-spacing: -.02em;
+}
+
+/* ── Headings ─────────────────────────────────────────────── */
+.auth-title {
+  font-size: 1.9rem; font-weight: 800;
+  letter-spacing: -.03em; color: var(--text);
+  margin-bottom: 6px;
+}
+.auth-subtitle {
+  font-size: .875rem; color: var(--text-2);
+  margin-bottom: 28px;
+}
+
+/* ── Error / Success banners ──────────────────────────────── */
+.auth-error, .auth-success {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-radius: var(--r);
+  font-size: .82rem; font-weight: 500;
+  margin-bottom: 16px;
+}
+.auth-error   { background: var(--red-lt);   color: var(--red);   border: 1px solid #fecaca; }
+.auth-success { background: var(--green-lt); color: var(--green); border: 1px solid #a7f3d0; }
+
+/* ── Google button ────────────────────────────────────────── */
+.google-btn {
+  width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 11px 16px; border-radius: var(--r);
+  border: 1.5px solid var(--border); background: var(--white);
+  font-size: .9rem; font-weight: 500; color: var(--text);
+  cursor: pointer; transition: border-color .15s, box-shadow .15s;
+  margin-bottom: 20px;
+}
+.google-btn:hover { border-color: #9CA3AF; box-shadow: var(--sh); }
+
+/* ── Divider ──────────────────────────────────────────────── */
+.auth-divider {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 20px;
+}
+.auth-divider::before, .auth-divider::after {
+  content: ""; flex: 1; height: 1px; background: var(--border);
+}
+.auth-divider span {
+  font-size: .68rem; font-weight: 700; letter-spacing: .08em;
+  color: var(--text-3); white-space: nowrap;
+}
+
+/* ── Form fields ──────────────────────────────────────────── */
+.field-group { margin-bottom: 16px; }
+.field-label {
+  display: block; font-size: .82rem; font-weight: 600;
+  color: var(--text); margin-bottom: 6px;
+}
+.field-input {
+  width: 100%; padding: 11px 14px;
+  border: 1.5px solid var(--border); border-radius: var(--r);
+  font-size: .9rem; font-family: inherit; color: var(--text);
+  background: var(--white); outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.field-input::placeholder { color: var(--text-3); }
+.field-input:focus {
+  border-color: var(--purple);
+  box-shadow: var(--sh-focus);
+}
+.input-wrap { position: relative; }
+.input-wrap .field-input { padding-right: 42px; }
+.eye-btn {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; cursor: pointer;
+  color: var(--text-3); display: flex; align-items: center;
+  padding: 4px;
+}
+.eye-btn:hover { color: var(--purple); }
+
+/* ── Password strength ────────────────────────────────────── */
+.pwd-strength {
+  display: flex; align-items: center; gap: 8px; margin-top: 6px;
+}
+.pwd-bar {
+  flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden;
+}
+.pwd-fill { height: 100%; border-radius: 2px; transition: width .3s, background .3s; }
+.pwd-label { font-size: .72rem; font-weight: 600; min-width: 60px; }
+
+/* ── Checkbox row ─────────────────────────────────────────── */
+.field-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 20px; flex-wrap: wrap; gap: 8px;
+}
+.checkbox-label {
+  display: flex; align-items: center; gap: 7px;
+  font-size: .82rem; color: var(--text-2); cursor: pointer;
+}
+.checkbox-label input[type=checkbox] {
+  width: 15px; height: 15px; accent-color: var(--purple); cursor: pointer;
+}
+.forgot-link {
+  font-size: .82rem; font-weight: 600; color: var(--purple);
+  text-decoration: none;
+}
+.forgot-link:hover { text-decoration: underline; }
+
+/* ── Submit button ────────────────────────────────────────── */
+.submit-btn {
+  width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 13px 20px; border-radius: var(--r);
+  background: var(--purple); color: #fff;
+  font-size: .95rem; font-weight: 700; font-family: inherit;
+  border: none; cursor: pointer;
+  box-shadow: 0 4px 14px rgba(124,58,237,.35);
+  transition: background .15s, transform .15s, box-shadow .15s;
+  margin-bottom: 20px;
+}
+.submit-btn:hover {
+  background: var(--purple-dk);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(124,58,237,.4);
+}
+.submit-btn:disabled {
+  background: var(--text-3); cursor: not-allowed;
+  transform: none; box-shadow: none;
+}
+
+/* ── Switch link ──────────────────────────────────────────── */
+.auth-switch {
+  text-align: center; font-size: .875rem; color: var(--text-2);
+}
+.auth-switch a {
+  color: var(--purple); font-weight: 700; text-decoration: none;
+}
+.auth-switch a:hover { text-decoration: underline; }
+
+/* ── Demo hint ────────────────────────────────────────────── */
+.demo-hint {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 16px; padding: 10px 14px;
+  background: var(--purple-lt); border-radius: var(--r);
+  font-size: .78rem; color: var(--purple);
+}
+.demo-hint strong { font-weight: 700; }
+
+/* ── Right panel ──────────────────────────────────────────── */
+.auth-right {
+  flex: 1;
+  background: var(--bg-right);
+  display: flex; align-items: center; justify-content: center;
+  padding: 48px 40px;
+  position: relative; overflow: hidden;
+}
+/* Subtle background circles */
+.auth-right::before {
+  content: "";
+  position: absolute; top: -80px; right: -80px;
+  width: 320px; height: 320px; border-radius: 50%;
+  background: rgba(124,58,237,.06);
+}
+.auth-right::after {
+  content: "";
+  position: absolute; bottom: -60px; left: -60px;
+  width: 240px; height: 240px; border-radius: 50%;
+  background: rgba(124,58,237,.05);
+}
+
+.auth-right-inner {
+  max-width: 440px; width: 100%; text-align: center;
+  position: relative; z-index: 1;
+}
+
+.right-brand {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: .85rem; font-weight: 700; color: var(--text);
+  margin-bottom: 14px;
+}
+.right-tagline {
+  font-size: .95rem; color: var(--text-2); line-height: 1.7;
+  max-width: 320px; margin: 0 auto 20px;
+}
+.right-cta {
+  display: inline-block; padding: 9px 22px;
+  border: 1.5px solid var(--text); border-radius: 4px;
+  font-size: .75rem; font-weight: 700; letter-spacing: .08em;
+  color: var(--text); background: none; cursor: pointer;
+  transition: background .15s, color .15s;
+  margin-bottom: 32px;
+}
+.right-cta:hover { background: var(--text); color: #fff; }
+
+/* ── Illustration ─────────────────────────────────────────── */
+.illustration {
+  margin: 0 auto 28px;
+  max-width: 420px;
+}
+.illustration svg { width: 100%; height: auto; }
+
+/* ── Feature pills ────────────────────────────────────────── */
+.feature-pills {
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+}
+.fpill {
+  padding: 6px 14px; border-radius: 100px;
+  background: rgba(124,58,237,.1); color: var(--purple);
+  font-size: .78rem; font-weight: 600;
+  border: 1px solid rgba(124,58,237,.2);
+}

@@ -1,16 +1,17 @@
 """
-backend/api.py  –  SolarScan REST API
-======================================
-Pure JSON API. No HTML serving. Frontend is completely separate.
-
+backend/app.py  –  SolarScan API + Auth
+========================================
 Endpoints:
-  GET  /api/health          → model status
-  POST /api/predict         → run detection on uploaded image
-  GET  /api/classes         → list of defect classes + metadata
+  POST /api/auth/register   → create account
+  POST /api/auth/login      → login, sets session cookie
+  POST /api/auth/logout     → clear session
+  GET  /api/auth/me         → current user info
+  GET  /api/health          → model status (protected)
+  POST /api/predict         → run detection (protected)
+  GET  /api/classes         → defect classes (protected)
 
 Run:
-    cd backend
-    python api.py
+    python backend/app.py
     → http://localhost:5000
 """
 
@@ -19,12 +20,14 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from functools import wraps
 
 import cv2
 import numpy as np
 import torch
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, session
 from flask_cors import CORS
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # ── resolve project root so we can import predict.py ──────────────────────
 ROOT = Path(__file__).resolve().parent.parent
@@ -48,7 +51,26 @@ from ultralytics import YOLO
 FRONTEND_DIR = ROOT / "frontend"
 
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+app.secret_key = "solarscan-secret-key-change-in-production"
+CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
+
+# ── In-memory user store (replace with DB in production) ──────────────────
+# Format: { email: { name, password_hash } }
+USERS = {
+    "admin@solarscan.com": {
+        "name":          "Admin User",
+        "password_hash": generate_password_hash("admin123"),
+    }
+}
+
+# ── Auth helpers ───────────────────────────────────────────────────────────
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if "user_email" not in session:
+            return jsonify({"error": "Unauthorized", "redirect": "/login.html"}), 401
+        return f(*args, **kwargs)
+    return decorated
 
 # ── Load model once ────────────────────────────────────────────────────────
 DEVICE       = "cuda" if torch.cuda.is_available() else "cpu"
@@ -72,17 +94,102 @@ CLASS_META = {
 # ── Routes ─────────────────────────────────────────────────────────────────
 @app.route("/")
 def index():
-    """Serve the frontend index.html."""
+    if "user_email" not in session:
+        return send_from_directory(str(FRONTEND_DIR), "login.html")
     return send_from_directory(str(FRONTEND_DIR), "index.html")
 
 
-@app.route("/<path:filename>")
-def frontend_files(filename):
-    """Serve frontend static files (css/, js/, assets/)."""
-    return send_from_directory(str(FRONTEND_DIR), filename)
+@app.route("/login.html")
+def login_page():
+    return send_from_directory(str(FRONTEND_DIR), "login.html")
+
+
+@app.route("/signup.html")
+def signup_page():
+    return send_from_directory(str(FRONTEND_DIR), "signup.html")
+
+
+@app.route("/dashboard")
+def dashboard():
+    if "user_email" not in session:
+        return send_from_directory(str(FRONTEND_DIR), "login.html")
+    return send_from_directory(str(FRONTEND_DIR), "index.html")
+
+
+# Static file routes — explicit paths only, never catch API routes
+@app.route("/css/<path:filename>")
+def serve_css(filename):
+    return send_from_directory(str(FRONTEND_DIR / "css"), filename)
+
+@app.route("/js/<path:filename>")
+def serve_js(filename):
+    return send_from_directory(str(FRONTEND_DIR / "js"), filename)
+
+@app.route("/assets/<path:filename>")
+def serve_assets(filename):
+    return send_from_directory(str(FRONTEND_DIR / "assets"), filename)
+
+
+# ── Auth endpoints ──────────────────────────────────────────────────────────
+@app.route("/api/auth/register", methods=["POST"])
+def register():
+    data     = request.get_json()
+    name     = (data.get("name") or "").strip()
+    email    = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+
+    if not name or not email or not password:
+        return jsonify({"error": "Name, email and password are required."}), 400
+    if "@" not in email:
+        return jsonify({"error": "Invalid email address."}), 400
+    if len(password) < 6:
+        return jsonify({"error": "Password must be at least 6 characters."}), 400
+    if email in USERS:
+        return jsonify({"error": "An account with this email already exists."}), 409
+
+    USERS[email] = {
+        "name":          name,
+        "password_hash": generate_password_hash(password),
+    }
+    session["user_email"] = email
+    session["user_name"]  = name
+    return jsonify({"success": True, "name": name, "email": email}), 201
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def login():
+    data     = request.get_json()
+    email    = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+
+    user = USERS.get(email)
+    if not user or not check_password_hash(user["password_hash"], password):
+        return jsonify({"error": "Invalid email or password."}), 401
+
+    session["user_email"] = email
+    session["user_name"]  = user["name"]
+    return jsonify({"success": True, "name": user["name"], "email": email})
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return jsonify({"success": True})
+
+
+@app.route("/api/auth/me", methods=["GET"])
+def me():
+    if "user_email" not in session:
+        return jsonify({"authenticated": False}), 401
+    return jsonify({
+        "authenticated": True,
+        "email": session["user_email"],
+        "name":  session["user_name"],
+    })
 
 
 @app.route("/api/health", methods=["GET"])
+@login_required
 def health():
     return jsonify({
         "status":   "ok",
@@ -94,6 +201,7 @@ def health():
 
 
 @app.route("/api/classes", methods=["GET"])
+@login_required
 def get_classes():
     result = []
     for cls in CLASSES:
@@ -112,6 +220,7 @@ def get_classes():
 
 
 @app.route("/api/predict", methods=["POST"])
+@login_required
 def predict():
     if "image" not in request.files:
         return jsonify({"error": "No image file in request. Use field name 'image'."}), 400
