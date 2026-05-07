@@ -432,11 +432,13 @@ $("clearHistoryBtn").addEventListener("click", () => {
     const r = await fetch(`${CONFIG.API_BASE}/api/auth/me`, { credentials: "include" });
     if (r.status === 401) { window.location.href = "/login.html"; return; }
     const user = await r.json();
-    // Show user name in topbar
-    const nameEl = document.getElementById("topbar-username");
-    if (nameEl) nameEl.textContent = user.name || "User";
     document.querySelector(".user-name").textContent = user.name || "SolarScan";
     document.querySelector(".user-role").textContent = user.email || "";
+    // Show Google avatar if available
+    if (user.avatar) {
+      const avatarEl = document.querySelector(".user-avatar");
+      avatarEl.innerHTML = `<img src="${user.avatar}" alt="${user.name}" style="width:36px;height:36px;border-radius:50%;object-fit:cover"/>`;
+    }
   } catch {
     // Backend might be loading — continue anyway
   }

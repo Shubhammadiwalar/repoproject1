@@ -1,14 +1,16 @@
 """
-backend/app.py  –  SolarScan API + Auth
-========================================
+backend/app.py  –  SolarScan API + Auth (Email + Google OAuth)
+===============================================================
 Endpoints:
-  POST /api/auth/register   → create account
-  POST /api/auth/login      → login, sets session cookie
-  POST /api/auth/logout     → clear session
-  GET  /api/auth/me         → current user info
-  GET  /api/health          → model status (protected)
-  POST /api/predict         → run detection (protected)
-  GET  /api/classes         → defect classes (protected)
+  POST /api/auth/register        → create account with email
+  POST /api/auth/login           → login with email/password
+  POST /api/auth/logout          → clear session
+  GET  /api/auth/me              → current user info
+  GET  /api/auth/google          → start Google OAuth flow
+  GET  /api/auth/google/callback → Google OAuth callback
+  GET  /api/health               → model status (protected)
+  POST /api/predict              → run detection (protected)
+  GET  /api/classes              → defect classes (protected)
 
 Run:
     python backend/app.py
@@ -25,9 +27,11 @@ from functools import wraps
 import cv2
 import numpy as np
 import torch
-from flask import Flask, jsonify, request, send_from_directory, session
+import requests as http_requests
+from flask import Flask, jsonify, request, send_from_directory, session, redirect, url_for
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
+from authlib.integrations.flask_client import OAuth
 
 # ── resolve project root so we can import predict.py ──────────────────────
 ROOT = Path(__file__).resolve().parent.parent
@@ -47,19 +51,51 @@ from predict import (
 )
 from ultralytics import YOLO
 
+# ── Load .env if present ───────────────────────────────────────────────────
+env_path = ROOT / ".env"
+if env_path.exists():
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip())
+
+GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+SECRET_KEY           = os.environ.get("SECRET_KEY", "solarscan-secret-key-change-in-production")
+GOOGLE_CONFIGURED    = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
+
 # ── App ────────────────────────────────────────────────────────────────────
 FRONTEND_DIR = ROOT / "frontend"
 
 app = Flask(__name__)
-app.secret_key = "solarscan-secret-key-change-in-production"
+app.secret_key = SECRET_KEY
 CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
 
+# ── Google OAuth via Authlib ───────────────────────────────────────────────
+oauth = OAuth(app)
+
+if GOOGLE_CONFIGURED:
+    google = oauth.register(
+        name="google",
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+        client_kwargs={"scope": "openid email profile"},
+    )
+    print(f"[API] Google OAuth : ENABLED (client_id={GOOGLE_CLIENT_ID[:20]}…)")
+else:
+    google = None
+    print("[API] Google OAuth : DISABLED (set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env)")
+
 # ── In-memory user store (replace with DB in production) ──────────────────
-# Format: { email: { name, password_hash } }
+# Format: { email: { name, password_hash, avatar, provider } }
 USERS = {
     "admin@solarscan.com": {
         "name":          "Admin User",
         "password_hash": generate_password_hash("admin123"),
+        "avatar":        None,
+        "provider":      "email",
     }
 }
 
@@ -150,9 +186,12 @@ def register():
     USERS[email] = {
         "name":          name,
         "password_hash": generate_password_hash(password),
+        "avatar":        None,
+        "provider":      "email",
     }
-    session["user_email"] = email
-    session["user_name"]  = name
+    session["user_email"]  = email
+    session["user_name"]   = name
+    session["user_avatar"] = None
     return jsonify({"success": True, "name": name, "email": email}), 201
 
 
@@ -163,11 +202,12 @@ def login():
     password = data.get("password") or ""
 
     user = USERS.get(email)
-    if not user or not check_password_hash(user["password_hash"], password):
+    if not user or not check_password_hash(user.get("password_hash", ""), password):
         return jsonify({"error": "Invalid email or password."}), 401
 
-    session["user_email"] = email
-    session["user_name"]  = user["name"]
+    session["user_email"]  = email
+    session["user_name"]   = user["name"]
+    session["user_avatar"] = user.get("avatar")
     return jsonify({"success": True, "name": user["name"], "email": email})
 
 
@@ -183,9 +223,62 @@ def me():
         return jsonify({"authenticated": False}), 401
     return jsonify({
         "authenticated": True,
-        "email": session["user_email"],
-        "name":  session["user_name"],
+        "email":  session["user_email"],
+        "name":   session["user_name"],
+        "avatar": session.get("user_avatar"),
     })
+
+
+# ── Google OAuth routes ─────────────────────────────────────────────────────
+@app.route("/api/auth/google")
+def google_login():
+    if not GOOGLE_CONFIGURED:
+        return jsonify({"error": "Google OAuth is not configured on this server."}), 501
+    # Build the callback URL
+    callback_url = url_for("google_callback", _external=True)
+    return google.authorize_redirect(callback_url)
+
+
+@app.route("/api/auth/google/callback")
+def google_callback():
+    if not GOOGLE_CONFIGURED:
+        return redirect("/login.html?error=google_not_configured")
+    try:
+        token     = google.authorize_access_token()
+        user_info = token.get("userinfo")
+        if not user_info:
+            # Fallback: fetch from userinfo endpoint
+            resp      = google.get("https://openidconnect.googleapis.com/v1/userinfo")
+            user_info = resp.json()
+
+        email  = user_info.get("email", "").lower()
+        name   = user_info.get("name") or user_info.get("given_name") or email.split("@")[0]
+        avatar = user_info.get("picture")
+
+        if not email:
+            return redirect("/login.html?error=no_email")
+
+        # Create account if first time, otherwise update avatar
+        if email not in USERS:
+            USERS[email] = {
+                "name":          name,
+                "password_hash": "",        # no password for Google users
+                "avatar":        avatar,
+                "provider":      "google",
+            }
+        else:
+            USERS[email]["avatar"]   = avatar
+            USERS[email]["provider"] = "google"
+
+        session["user_email"]  = email
+        session["user_name"]   = name
+        session["user_avatar"] = avatar
+
+        return redirect("/")
+
+    except Exception as e:
+        print(f"[Google OAuth Error] {e}")
+        return redirect(f"/login.html?error=oauth_failed")
 
 
 @app.route("/api/health", methods=["GET"])
