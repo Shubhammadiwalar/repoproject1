@@ -53,12 +53,17 @@ from ultralytics import YOLO
 
 # ── Load .env if present ───────────────────────────────────────────────────
 env_path = ROOT / ".env"
-if env_path.exists():
-    for line in env_path.read_text().splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            k, v = line.split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip())
+try:
+    if env_path.is_file() and env_path.stat().st_size > 0:
+        # utf-8-sig strips BOM if present (Windows PowerShell adds it)
+        for line in env_path.read_text(encoding="utf-8-sig").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip())
+        print(f"[API] Loaded .env from {env_path}")
+except Exception as e:
+    print(f"[API] Warning: could not read .env — {e}")
 
 GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
@@ -233,9 +238,9 @@ def me():
 @app.route("/api/auth/google")
 def google_login():
     if not GOOGLE_CONFIGURED:
-        return jsonify({"error": "Google OAuth is not configured on this server."}), 501
-    # Build the callback URL
-    callback_url = url_for("google_callback", _external=True)
+        return redirect("/login.html?error=google_not_configured")
+    # Hardcode the callback URL to avoid Flask generating wrong host/port
+    callback_url = "http://127.0.0.1:5000/api/auth/google/callback"
     return google.authorize_redirect(callback_url)
 
 
@@ -244,6 +249,8 @@ def google_callback():
     if not GOOGLE_CONFIGURED:
         return redirect("/login.html?error=google_not_configured")
     try:
+        # Authlib stores redirect_uri in session from authorize_redirect()
+        # Do NOT pass it again here — it causes "multiple values" error
         token     = google.authorize_access_token()
         user_info = token.get("userinfo")
         if not user_info:
