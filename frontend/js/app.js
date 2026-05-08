@@ -262,8 +262,7 @@ function renderResults(data) {
         ${d.grid_label
           ? `<span class="grid-badge" style="background:${d.color}18;color:${d.color};border:1px solid ${d.color}44">${d.grid_label}</span>`
           : `<span style="color:var(--text-3)">—</span>`}
-      </td>
-      <td><span class="cls-pill" style="background:${d.color}18;color:${d.color}">${d.class}</span></td>
+      </td>      <td><span class="cls-pill" style="background:${d.color}18;color:${d.color}">${d.class}</span></td>
       <td>
         <div class="conf-bar-wrap">
           <div class="conf-bar-track"><div class="conf-bar-fill" style="width:${d.confidence}%;background:${d.color}"></div></div>
@@ -291,11 +290,17 @@ function renderResults(data) {
         <div class="panel-crop-card" style="border-top:3px solid ${pc.color}">
           <div class="panel-crop-header">
             <span class="grid-badge" style="background:${pc.color}18;color:${pc.color};border:1px solid ${pc.color}44">${pc.grid_label}</span>
-            <span class="cls-pill" style="background:${pc.color}18;color:${pc.color};font-size:.7rem">${pc.class}</span>
+            <div style="display:flex;flex-direction:column;gap:1px">
+              <span style="font-size:.68rem;color:var(--text-3);font-weight:600">Row ${pc.grid_row} · Col ${pc.grid_col}</span>
+              <span class="cls-pill" style="background:${pc.color}18;color:${pc.color};font-size:.7rem">${pc.class}</span>
+            </div>
           </div>
           <img src="data:image/jpeg;base64,${pc.crop_b64}" class="panel-crop-img" alt="Panel ${pc.grid_label}"/>
           <div class="panel-crop-footer">
-            <span style="font-weight:700;color:${dmgColor(pc.damage_pct)}">${pc.damage_pct}%</span>
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <span style="font-weight:700;color:${dmgColor(pc.damage_pct)};font-size:.85rem">${pc.damage_pct}% damage</span>
+              <span style="font-size:.7rem;color:var(--text-3)">${pc.confidence}% confidence</span>
+            </div>
             <span class="sev-badge ${sevCss(pc.severity)}" style="font-size:.65rem">${pc.severity}</span>
           </div>
         </div>

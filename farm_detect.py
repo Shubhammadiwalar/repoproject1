@@ -3,445 +3,356 @@ farm_detect.py
 --------------
 Solar Farm Grid Detection & Panel Matrix Mapping
 
-For aerial/drone images showing multiple solar panels in a grid:
-1. Detect all individual panels using contour analysis + YOLO
-2. Cluster panels into rows and columns
-3. Assign matrix coordinates (A1, B2, C3 …)
-4. For each detected defect, report its grid position
-5. Generate a cropped zoom of the affected panel
-6. Return a grid map showing which panels are affected
+Labels panels as:  Row 1 Col 1,  Row 1 Col 2,  Row 2 Col 1 …
+Short form:        R1C1,  R1C2,  R2C1 …
 """
 
 import cv2
 import numpy as np
-from pathlib import Path
 import base64
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple
 
 
-# ── Panel detection via image processing ──────────────────────────────────
+# ── Panel detection ────────────────────────────────────────────────────────
 def detect_panel_regions(img_bgr: np.ndarray) -> List[Dict]:
-    """
-    Detect individual solar panel regions in a farm/aerial image.
-    Uses colour segmentation (blue/dark panels on green/brown background)
-    + contour analysis to find rectangular panel shapes.
-
-    Returns list of dicts: {x1, y1, x2, y2, cx, cy, area}
-    """
     h, w = img_bgr.shape[:2]
+    hsv  = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
 
-    # ── Convert to HSV for colour-based segmentation ─────────────────────
-    hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+    # Solar panels: dark blue / dark grey
+    mask1 = cv2.inRange(hsv, (90,  20,  20), (140, 255, 180))   # dark blue
+    mask2 = cv2.inRange(hsv, (0,   0,   10), (180,  60, 120))   # dark grey
+    mask3 = cv2.inRange(hsv, (100, 30,  30), (130, 200, 160))   # navy blue
+    mask  = cv2.bitwise_or(mask1, cv2.bitwise_or(mask2, mask3))
 
-    # Solar panels are typically dark blue/grey
-    # Mask 1: dark blue panels
-    mask1 = cv2.inRange(hsv, (90, 20, 20), (140, 255, 180))
-    # Mask 2: dark grey/black panels
-    mask2 = cv2.inRange(hsv, (0, 0, 10), (180, 60, 120))
-    # Mask 3: navy blue
-    mask3 = cv2.inRange(hsv, (100, 30, 30), (130, 200, 160))
+    k_close = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+    k_open  = cv2.getStructuringElement(cv2.MORPH_RECT, (10, 10))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k_close)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN,  k_open)
 
-    panel_mask = cv2.bitwise_or(mask1, cv2.bitwise_or(mask2, mask3))
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # Morphological cleanup
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
-    panel_mask = cv2.morphologyEx(panel_mask, cv2.MORPH_CLOSE, kernel)
-    panel_mask = cv2.morphologyEx(panel_mask, cv2.MORPH_OPEN,
-                                  cv2.getStructuringElement(cv2.MORPH_RECT, (10, 10)))
-
-    # Find contours
-    contours, _ = cv2.findContours(panel_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    min_area = (w * h) * 0.003   # at least 0.3% of image
-    max_area = (w * h) * 0.25    # at most 25% of image
-    min_aspect = 0.3              # not too thin
-    max_aspect = 5.0
+    min_area = (w * h) * 0.003
+    max_area = (w * h) * 0.25
 
     panels = []
     for cnt in contours:
         area = cv2.contourArea(cnt)
-        if area < min_area or area > max_area:
+        if not (min_area <= area <= max_area):
             continue
-
         x, y, bw, bh = cv2.boundingRect(cnt)
         aspect = bw / max(bh, 1)
-        if aspect < min_aspect or aspect > max_aspect:
+        if not (0.3 <= aspect <= 5.0):
             continue
-
-        # Solidity check — panels are fairly solid rectangles
         hull_area = cv2.contourArea(cv2.convexHull(cnt))
-        solidity = area / max(hull_area, 1)
-        if solidity < 0.5:
+        if area / max(hull_area, 1) < 0.5:
             continue
+        panels.append({"x1": x, "y1": y, "x2": x+bw, "y2": y+bh,
+                        "cx": x+bw//2, "cy": y+bh//2,
+                        "area": area, "w": bw, "h": bh})
 
-        panels.append({
-            "x1": x, "y1": y,
-            "x2": x + bw, "y2": y + bh,
-            "cx": x + bw // 2,
-            "cy": y + bh // 2,
-            "area": area,
-            "w": bw, "h": bh,
-        })
-
-    # Remove heavily overlapping boxes (keep larger)
-    panels = _nms_panels(panels, iou_thresh=0.4)
-    return panels
+    return _nms_panels(panels, 0.4)
 
 
-def _nms_panels(panels: List[Dict], iou_thresh: float = 0.4) -> List[Dict]:
-    """Simple NMS to remove overlapping panel detections."""
-    if not panels:
-        return panels
+def _nms_panels(panels, iou_thresh):
     panels = sorted(panels, key=lambda p: p["area"], reverse=True)
     keep = []
     for p in panels:
-        overlap = False
-        for k in keep:
-            iou = _iou(p, k)
-            if iou > iou_thresh:
-                overlap = True
-                break
-        if not overlap:
+        if not any(_iou(p, k) > iou_thresh for k in keep):
             keep.append(p)
     return keep
 
 
-def _iou(a: Dict, b: Dict) -> float:
-    ix1 = max(a["x1"], b["x1"])
-    iy1 = max(a["y1"], b["y1"])
-    ix2 = min(a["x2"], b["x2"])
-    iy2 = min(a["y2"], b["y2"])
-    inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+def _iou(a, b):
+    ix1, iy1 = max(a["x1"], b["x1"]), max(a["y1"], b["y1"])
+    ix2, iy2 = min(a["x2"], b["x2"]), min(a["y2"], b["y2"])
+    inter = max(0, ix2-ix1) * max(0, iy2-iy1)
     if inter == 0:
         return 0.0
-    area_a = (a["x2"] - a["x1"]) * (a["y2"] - a["y1"])
-    area_b = (b["x2"] - b["x1"]) * (b["y2"] - b["y1"])
-    return inter / (area_a + area_b - inter)
+    return inter / ((a["x2"]-a["x1"])*(a["y2"]-a["y1"]) +
+                    (b["x2"]-b["x1"])*(b["y2"]-b["y1"]) - inter)
 
 
-# ── Grid assignment ────────────────────────────────────────────────────────
+# ── Grid assignment — pure numeric Row/Col ─────────────────────────────────
 def assign_grid_positions(panels: List[Dict], row_gap_ratio: float = 0.6) -> List[Dict]:
     """
-    Cluster panels into rows and columns, assign matrix labels like A1, B2.
-
-    row_gap_ratio: if vertical gap between panel centres > this × median panel height,
-                   treat as a new row.
+    Cluster panels into rows and columns.
+    Labels:  grid_row (0-based int), grid_col (0-based int)
+             grid_label = "R{row+1}C{col+1}"   e.g. R1C1, R2C3
     """
     if not panels:
         return panels
 
-    # Sort by Y centre first
     panels = sorted(panels, key=lambda p: p["cy"])
+    med_h  = float(np.median([p["h"] for p in panels]))
 
-    # Estimate median panel height
-    heights = [p["h"] for p in panels]
-    med_h   = float(np.median(heights)) if heights else 50
-
-    # Cluster into rows by Y proximity
     rows: List[List[Dict]] = []
-    current_row = [panels[0]]
+    cur = [panels[0]]
     for p in panels[1:]:
-        if abs(p["cy"] - current_row[-1]["cy"]) < med_h * row_gap_ratio:
-            current_row.append(p)
+        if abs(p["cy"] - cur[-1]["cy"]) < med_h * row_gap_ratio:
+            cur.append(p)
         else:
-            rows.append(current_row)
-            current_row = [p]
-    rows.append(current_row)
+            rows.append(cur)
+            cur = [p]
+    rows.append(cur)
 
-    # Within each row, sort by X
     for row in rows:
         row.sort(key=lambda p: p["cx"])
 
-    # Assign labels: rows → A, B, C … cols → 1, 2, 3 …
-    row_labels = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     for r_idx, row in enumerate(rows):
-        row_label = row_labels[r_idx % len(row_labels)]
         for c_idx, panel in enumerate(row):
             panel["grid_row"]   = r_idx
             panel["grid_col"]   = c_idx
-            panel["grid_label"] = f"{row_label}{c_idx + 1}"
+            panel["grid_label"] = f"R{r_idx+1}C{c_idx+1}"
 
     return panels
 
 
-# ── Match YOLO detections to grid panels ──────────────────────────────────
-def match_detections_to_grid(
-    detections: List[Dict],
-    grid_panels: List[Dict],
-    img_h: int,
-    img_w: int,
-) -> List[Dict]:
-    """
-    For each YOLO detection bbox, find which grid panel it overlaps most.
-    Adds 'grid_label', 'grid_row', 'grid_col' to each detection.
-    If no grid panels found, assigns position based on image quadrant.
-    """
+# ── Match YOLO detections → grid ───────────────────────────────────────────
+def match_detections_to_grid(detections, grid_panels, img_h, img_w):
     for det in detections:
         dx1, dy1, dx2, dy2 = det["bbox"]
         det_cx = (dx1 + dx2) / 2
         det_cy = (dy1 + dy2) / 2
 
         if grid_panels:
-            # Find grid panel with highest IoU or containing the detection centre
-            best_panel = None
-            best_score = -1
+            best, best_score = None, -1
             for gp in grid_panels:
-                # Check if detection centre is inside this panel
                 if gp["x1"] <= det_cx <= gp["x2"] and gp["y1"] <= det_cy <= gp["y2"]:
-                    score = 2.0  # strong match
+                    score = 2.0
                 else:
-                    # Fall back to IoU
-                    det_dict = {"x1": dx1, "y1": dy1, "x2": dx2, "y2": dy2}
-                    score = _iou(det_dict, gp)
+                    score = _iou({"x1":dx1,"y1":dy1,"x2":dx2,"y2":dy2}, gp)
                 if score > best_score:
-                    best_score = score
-                    best_panel = gp
+                    best_score, best = score, gp
 
-            if best_panel and best_score > 0:
-                det["grid_label"] = best_panel["grid_label"]
-                det["grid_row"]   = best_panel["grid_row"]
-                det["grid_col"]   = best_panel["grid_col"]
-                det["panel_bbox"] = [best_panel["x1"], best_panel["y1"],
-                                     best_panel["x2"], best_panel["y2"]]
+            if best and best_score > 0:
+                det["grid_label"] = best["grid_label"]
+                det["grid_row"]   = best["grid_row"]
+                det["grid_col"]   = best["grid_col"]
+                det["panel_bbox"] = [best["x1"], best["y1"], best["x2"], best["y2"]]
             else:
-                det["grid_label"] = _quadrant_label(det_cx, det_cy, img_w, img_h)
-                det["grid_row"]   = 0
-                det["grid_col"]   = 0
-                det["panel_bbox"] = [dx1, dy1, dx2, dy2]
+                det.update(_fallback_pos(det_cx, det_cy, img_w, img_h))
         else:
-            det["grid_label"] = _quadrant_label(det_cx, det_cy, img_w, img_h)
-            det["grid_row"]   = 0
-            det["grid_col"]   = 0
-            det["panel_bbox"] = [dx1, dy1, dx2, dy2]
+            det.update(_fallback_pos(det_cx, det_cy, img_w, img_h))
 
     return detections
 
 
-def _quadrant_label(cx: float, cy: float, w: int, h: int) -> str:
-    """Fallback: assign quadrant label when no grid is detected."""
-    row = "A" if cy < h / 2 else "B"
+def _fallback_pos(cx, cy, w, h):
+    row = 1 if cy < h / 2 else 2
     col = 1 if cx < w / 2 else 2
-    return f"{row}{col}"
+    return {"grid_label": f"R{row}C{col}", "grid_row": row-1,
+            "grid_col": col-1, "panel_bbox": None}
 
 
 # ── Crop zoomed panel ──────────────────────────────────────────────────────
-def crop_panel_zoom(img_bgr: np.ndarray, bbox: List[int], pad_ratio: float = 0.15) -> np.ndarray:
-    """
-    Crop and zoom into a specific panel with padding.
-    Returns the cropped panel image.
-    """
+def crop_panel_zoom(img_bgr, bbox, pad_ratio=0.15):
     h, w = img_bgr.shape[:2]
     x1, y1, x2, y2 = bbox
-    bw, bh = x2 - x1, y2 - y1
-    pad_x = int(bw * pad_ratio)
-    pad_y = int(bh * pad_ratio)
-
-    cx1 = max(0, x1 - pad_x)
-    cy1 = max(0, y1 - pad_y)
-    cx2 = min(w, x2 + pad_x)
-    cy2 = min(h, y2 + pad_y)
-
+    px = int((x2-x1) * pad_ratio)
+    py = int((y2-y1) * pad_ratio)
+    cx1, cy1 = max(0, x1-px), max(0, y1-py)
+    cx2, cy2 = min(w, x2+px), min(h, y2+py)
     crop = img_bgr[cy1:cy2, cx1:cx2]
-    # Resize to a standard display size
-    target_w = 400
-    scale    = target_w / max(crop.shape[1], 1)
-    target_h = int(crop.shape[0] * scale)
-    if target_h > 0 and target_w > 0:
-        crop = cv2.resize(crop, (target_w, target_h), interpolation=cv2.INTER_LANCZOS4)
+    tw   = 400
+    th   = int(crop.shape[0] * tw / max(crop.shape[1], 1))
+    if tw > 0 and th > 0:
+        crop = cv2.resize(crop, (tw, th), interpolation=cv2.INTER_LANCZOS4)
     return crop
 
 
-# ── Grid map visualisation ─────────────────────────────────────────────────
-def draw_grid_map(
-    grid_panels: List[Dict],
-    detections:  List[Dict],
-    img_h: int,
-    img_w: int,
-) -> np.ndarray:
-    """
-    Draw a clean grid map showing panel positions and which ones are affected.
-    Returns a BGR numpy image.
-    """
+# ── Grid map — numeric Row/Col labels ─────────────────────────────────────
+def draw_grid_map(grid_panels, detections, img_h, img_w):
     if not grid_panels:
-        return _draw_no_grid_map(detections)
+        return _no_grid_map(detections)
 
     n_rows = max(p["grid_row"] for p in grid_panels) + 1
     n_cols = max(p["grid_col"] for p in grid_panels) + 1
 
-    cell_w, cell_h = 64, 48
-    pad = 12
-    label_w = 28
-    label_h = 22
+    # Cell dimensions
+    CELL_W, CELL_H = 80, 56
+    PAD            = 8
+    HDR_W          = 52   # left header width (Row labels)
+    HDR_H          = 28   # top header height (Col labels)
+    MARGIN         = 12
 
-    map_w = label_w + n_cols * (cell_w + pad) + pad
-    map_h = label_h + n_rows * (cell_h + pad) + pad
+    map_w = MARGIN + HDR_W + n_cols * (CELL_W + PAD) + MARGIN
+    map_h = MARGIN + HDR_H + n_rows * (CELL_H + PAD) + MARGIN + 20  # +20 legend
 
-    canvas = np.ones((map_h, map_w, 3), dtype=np.uint8) * 248  # off-white
+    canvas = np.full((map_h, map_w, 3), 245, dtype=np.uint8)
 
-    # Affected labels
+    # Affected lookup
     affected = {d.get("grid_label"): d for d in detections if d.get("grid_label")}
 
-    row_labels = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-
-    # Column headers
+    # ── Column headers ────────────────────────────────────────────────────
     for c in range(n_cols):
-        x = label_w + c * (cell_w + pad) + pad + cell_w // 2
-        cv2.putText(canvas, str(c + 1), (x - 5, 16),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (100, 100, 100), 1, cv2.LINE_AA)
+        cx = MARGIN + HDR_W + c * (CELL_W + PAD) + CELL_W // 2
+        label = f"Col {c+1}"
+        (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.38, 1)
+        cv2.putText(canvas, label, (cx - tw//2, MARGIN + HDR_H - 6),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (80, 80, 80), 1, cv2.LINE_AA)
 
+    # ── Row headers + cells ───────────────────────────────────────────────
     for r in range(n_rows):
-        # Row label
-        rl = row_labels[r % len(row_labels)]
-        y_top = label_h + r * (cell_h + pad) + pad
-        cv2.putText(canvas, rl, (4, y_top + cell_h // 2 + 5),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (100, 100, 100), 1, cv2.LINE_AA)
+        ry = MARGIN + HDR_H + r * (CELL_H + PAD)
+
+        # Row label on left
+        row_lbl = f"Row {r+1}"
+        (tw, th), _ = cv2.getTextSize(row_lbl, cv2.FONT_HERSHEY_SIMPLEX, 0.38, 1)
+        cv2.putText(canvas, row_lbl,
+                    (MARGIN, ry + CELL_H//2 + th//2),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (80, 80, 80), 1, cv2.LINE_AA)
 
         for c in range(n_cols):
-            lbl = f"{rl}{c + 1}"
-            x1  = label_w + c * (cell_w + pad) + pad
-            y1  = y_top
-            x2  = x1 + cell_w
-            y2  = y1 + cell_h
+            lbl = f"R{r+1}C{c+1}"
+            cx1 = MARGIN + HDR_W + c * (CELL_W + PAD)
+            cy1 = ry
+            cx2 = cx1 + CELL_W
+            cy2 = cy1 + CELL_H
 
-            # Check if this cell exists in detected panels
             exists = any(p["grid_row"] == r and p["grid_col"] == c for p in grid_panels)
             if not exists:
+                # Empty slot — draw faint placeholder
+                cv2.rectangle(canvas, (cx1, cy1), (cx2, cy2), (220, 220, 220), 1)
                 continue
 
             if lbl in affected:
                 det   = affected[lbl]
-                color = _hex_to_bgr(det.get("color", "#EF4444"))
-                bg    = tuple(int(c * 0.15 + 240 * 0.85) for c in color)
-                cv2.rectangle(canvas, (x1, y1), (x2, y2), bg, -1)
-                cv2.rectangle(canvas, (x1, y1), (x2, y2), color, 2)
-                # Damage % text
-                dmg_txt = f"{det.get('damage_pct', 0):.0f}%"
-                cv2.putText(canvas, lbl, (x1 + 4, y1 + 16),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.38, color, 1, cv2.LINE_AA)
-                cv2.putText(canvas, dmg_txt, (x1 + 4, y1 + 32),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.38, color, 1, cv2.LINE_AA)
-                # Warning icon
-                cv2.putText(canvas, "!", (x2 - 14, y1 + 16),
-                            cv2.FONT_HERSHEY_DUPLEX, 0.5, color, 1, cv2.LINE_AA)
+                color = _hex_bgr(det.get("color", "#EF4444"))
+                # Tinted background
+                bg = tuple(int(v * 0.12 + 245 * 0.88) for v in color)
+                cv2.rectangle(canvas, (cx1, cy1), (cx2, cy2), bg, -1)
+                cv2.rectangle(canvas, (cx1, cy1), (cx2, cy2), color, 2)
+
+                # Panel ID  e.g. "R1C2"
+                cv2.putText(canvas, lbl,
+                            (cx1+5, cy1+16),
+                            cv2.FONT_HERSHEY_DUPLEX, 0.38, color, 1, cv2.LINE_AA)
+                # Damage %
+                dmg = f"{det.get('damage_pct',0):.0f}% dmg"
+                cv2.putText(canvas, dmg,
+                            (cx1+5, cy1+30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.32, color, 1, cv2.LINE_AA)
+                # Class (short)
+                cls_short = det.get("class","?")[:8]
+                cv2.putText(canvas, cls_short,
+                            (cx1+5, cy1+44),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.28, color, 1, cv2.LINE_AA)
+                # Warning triangle
+                pts = np.array([[cx2-8, cy1+4], [cx2-16, cy1+18], [cx2-1, cy1+18]], np.int32)
+                cv2.fillPoly(canvas, [pts], color)
+                cv2.putText(canvas, "!", (cx2-12, cy1+17),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.28, (255,255,255), 1, cv2.LINE_AA)
             else:
-                # Clean panel
-                cv2.rectangle(canvas, (x1, y1), (x2, y2), (220, 240, 220), -1)
-                cv2.rectangle(canvas, (x1, y1), (x2, y2), (160, 200, 160), 1)
-                cv2.putText(canvas, lbl, (x1 + 4, y1 + 16),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.35, (100, 150, 100), 1, cv2.LINE_AA)
-                cv2.putText(canvas, "OK", (x1 + 4, y1 + 30),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.32, (100, 150, 100), 1, cv2.LINE_AA)
+                # Clean panel — green
+                cv2.rectangle(canvas, (cx1, cy1), (cx2, cy2), (225, 245, 225), -1)
+                cv2.rectangle(canvas, (cx1, cy1), (cx2, cy2), (140, 195, 140), 1)
+                cv2.putText(canvas, lbl,
+                            (cx1+5, cy1+16),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.35, (60, 140, 60), 1, cv2.LINE_AA)
+                cv2.putText(canvas, "OK",
+                            (cx1+5, cy1+32),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.38, (60, 140, 60), 1, cv2.LINE_AA)
 
-    # Legend
-    legend_y = map_h - 2
-    cv2.putText(canvas, "Green=OK  Coloured=Defect", (pad, legend_y - 2),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.3, (130, 130, 130), 1, cv2.LINE_AA)
+    # ── Legend ────────────────────────────────────────────────────────────
+    ly = map_h - 8
+    cv2.rectangle(canvas, (MARGIN, ly-10), (MARGIN+12, ly), (140,195,140), -1)
+    cv2.putText(canvas, "= OK", (MARGIN+16, ly-1),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.3, (100,100,100), 1, cv2.LINE_AA)
+    cv2.rectangle(canvas, (MARGIN+70, ly-10), (MARGIN+82, ly), (60,60,220), -1)
+    cv2.putText(canvas, "= Defect", (MARGIN+86, ly-1),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.3, (100,100,100), 1, cv2.LINE_AA)
 
     return canvas
 
 
-def _draw_no_grid_map(detections: List[Dict]) -> np.ndarray:
-    """Fallback grid map when no panels were auto-detected."""
-    canvas = np.ones((120, 300, 3), dtype=np.uint8) * 248
-    cv2.putText(canvas, "Grid map unavailable", (10, 40),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (150, 150, 150), 1, cv2.LINE_AA)
-    cv2.putText(canvas, f"{len(detections)} defect(s) detected", (10, 70),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 200), 1, cv2.LINE_AA)
-    cv2.putText(canvas, "Upload aerial/farm image", (10, 100),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180, 180, 180), 1, cv2.LINE_AA)
+def _no_grid_map(detections):
+    canvas = np.full((140, 340, 3), 245, dtype=np.uint8)
+    cv2.putText(canvas, "Grid map unavailable", (12, 40),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (160,160,160), 1, cv2.LINE_AA)
+    cv2.putText(canvas, f"{len(detections)} defect(s) detected", (12, 72),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100,100,200), 1, cv2.LINE_AA)
+    cv2.putText(canvas, "Upload an aerial/farm image for grid view", (12, 104),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.35, (180,180,180), 1, cv2.LINE_AA)
     return canvas
 
 
-def _hex_to_bgr(hex_color: str) -> Tuple[int, int, int]:
-    hex_color = hex_color.lstrip("#")
-    r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+def _hex_bgr(hex_color: str) -> Tuple[int, int, int]:
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2],16), int(h[2:4],16), int(h[4:6],16)
     return (b, g, r)
 
 
 # ── Full farm analysis pipeline ────────────────────────────────────────────
-def analyse_farm_image(
-    img_bgr:    np.ndarray,
-    detections: List[Dict],
-) -> Dict:
-    """
-    Main entry point for farm/aerial image analysis.
-
-    Args:
-        img_bgr:    Original image (BGR numpy array)
-        detections: List of YOLO detections with bbox, class, confidence, etc.
-
-    Returns dict with:
-        grid_panels:   all detected panel regions with grid labels
-        detections:    enriched with grid_label, panel_bbox
-        grid_map_b64:  base64 PNG of the grid map
-        panel_crops:   list of {grid_label, crop_b64, detection} for each defect
-        total_panels:  total panels detected
-        affected_panels: count of panels with defects
-        farm_mode:     True (signals frontend to use farm layout)
-    """
+def analyse_farm_image(img_bgr: np.ndarray, detections: List[Dict]) -> Dict:
     h, w = img_bgr.shape[:2]
 
-    # 1. Detect panel regions
+    # 1. Detect panels
     grid_panels = detect_panel_regions(img_bgr)
-
-    # 2. Assign grid positions
     if grid_panels:
         grid_panels = assign_grid_positions(grid_panels)
 
-    # 3. Match detections to grid
+    # 2. Match detections → grid
     detections = match_detections_to_grid(detections, grid_panels, h, w)
 
-    # 4. Generate grid map
-    grid_map_img = draw_grid_map(grid_panels, detections, h, w)
-    _, gm_buf    = cv2.imencode(".png", grid_map_img)
+    # 3. Grid map image
+    gm_img = draw_grid_map(grid_panels, detections, h, w)
+    _, gm_buf = cv2.imencode(".png", gm_img)
     grid_map_b64 = base64.b64encode(gm_buf).decode("utf-8")
 
-    # 5. Crop zoomed views of each defective panel
-    panel_crops = []
-    seen_labels = set()
+    # 4. Zoomed crops of defective panels
+    panel_crops, seen = [], set()
     for det in detections:
         lbl = det.get("grid_label", "?")
-        if lbl in seen_labels:
+        if lbl in seen:
             continue
-        seen_labels.add(lbl)
-
-        panel_bbox = det.get("panel_bbox", det["bbox"])
-        crop       = crop_panel_zoom(img_bgr, panel_bbox, pad_ratio=0.12)
-        _, c_buf   = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 90])
-        crop_b64   = base64.b64encode(c_buf).decode("utf-8")
-
+        seen.add(lbl)
+        bbox = det.get("panel_bbox") or det["bbox"]
+        crop = crop_panel_zoom(img_bgr, bbox, pad_ratio=0.12)
+        _, c_buf = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 90])
         panel_crops.append({
             "grid_label":  lbl,
-            "crop_b64":    crop_b64,
+            "grid_row":    det.get("grid_row", 0) + 1,   # 1-based for display
+            "grid_col":    det.get("grid_col", 0) + 1,
+            "crop_b64":    base64.b64encode(c_buf).decode("utf-8"),
             "class":       det.get("class", "Unknown"),
             "confidence":  det.get("confidence", 0),
             "damage_pct":  det.get("damage_pct", 0),
             "severity":    det.get("severity", "Unknown"),
             "color":       det.get("color", "#7C3AED"),
             "bbox":        det["bbox"],
-            "panel_bbox":  panel_bbox,
+            "panel_bbox":  bbox,
         })
 
-    # 6. Draw grid overlay on original image
+    # 5. Draw grid overlay on original image
     annotated = img_bgr.copy()
+    affected_labels = {d.get("grid_label") for d in detections}
     for gp in grid_panels:
-        lbl = gp.get("grid_label", "")
-        affected = any(d.get("grid_label") == lbl for d in detections)
-        color = (0, 180, 0) if not affected else (0, 0, 220)
-        thickness = 1 if not affected else 2
-        cv2.rectangle(annotated, (gp["x1"], gp["y1"]), (gp["x2"], gp["y2"]), color, thickness)
-        cv2.putText(annotated, lbl,
-                    (gp["x1"] + 4, gp["y1"] + 16),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.4,
-                    (255, 255, 255), 1, cv2.LINE_AA)
+        lbl       = gp.get("grid_label", "")
+        is_bad    = lbl in affected_labels
+        box_color = (0, 60, 220) if is_bad else (0, 180, 60)
+        thickness = 2 if is_bad else 1
+        cv2.rectangle(annotated, (gp["x1"], gp["y1"]), (gp["x2"], gp["y2"]),
+                      box_color, thickness)
+        # Label background pill
+        (tw, th), bl = cv2.getTextSize(lbl, cv2.FONT_HERSHEY_SIMPLEX, 0.38, 1)
+        lx, ly = gp["x1"] + 3, gp["y1"] + th + 4
+        cv2.rectangle(annotated, (gp["x1"]+1, gp["y1"]+1),
+                      (gp["x1"]+tw+6, gp["y1"]+th+6),
+                      box_color, -1)
+        cv2.putText(annotated, lbl, (lx, ly),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (255,255,255), 1, cv2.LINE_AA)
 
     return {
-        "grid_panels":       [{"grid_label": p.get("grid_label",""), "x1": p["x1"], "y1": p["y1"], "x2": p["x2"], "y2": p["y2"]} for p in grid_panels],
-        "detections":        detections,
-        "grid_map_b64":      grid_map_b64,
-        "panel_crops":       panel_crops,
-        "total_panels":      len(grid_panels),
-        "affected_panels":   len(panel_crops),
-        "farm_mode":         True,
-        "annotated_farm":    annotated,
+        "grid_panels":    [{"grid_label": p.get("grid_label",""),
+                            "grid_row": p.get("grid_row",0)+1,
+                            "grid_col": p.get("grid_col",0)+1,
+                            "x1":p["x1"],"y1":p["y1"],"x2":p["x2"],"y2":p["y2"]}
+                           for p in grid_panels],
+        "detections":     detections,
+        "grid_map_b64":   grid_map_b64,
+        "panel_crops":    panel_crops,
+        "total_panels":   len(grid_panels),
+        "affected_panels":len(panel_crops),
+        "farm_mode":      True,
+        "annotated_farm": annotated,
     }
