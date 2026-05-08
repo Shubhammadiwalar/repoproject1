@@ -190,8 +190,8 @@ function renderHistoryTable(tbody) {
     tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No scans yet — upload a panel image to get started</td></tr>';
     return;
   }
-  tbody.innerHTML = scanHistory.map(e => `
-    <tr>
+  tbody.innerHTML = scanHistory.map((e, idx) => `
+    <tr class="history-row" data-idx="${idx}" title="Click to view full details">
       <td style="color:var(--text-3);font-size:.78rem">${e.time}</td>
       <td style="font-weight:600;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.file}</td>
       <td><span class="cls-pill" style="background:${e.color}18;color:${e.color}">${e.cls}</span></td>
@@ -205,6 +205,11 @@ function renderHistoryTable(tbody) {
       <td><span class="sev-badge ${sevCss(e.severity)}">${e.severity}</span></td>
     </tr>
   `).join("");
+
+  // Make every row clickable
+  tbody.querySelectorAll(".history-row").forEach(row => {
+    row.addEventListener("click", () => openHistoryDetail(parseInt(row.dataset.idx)));
+  });
 }
 
 function renderHistoryPage() {
@@ -265,6 +270,155 @@ function renderResults(data) {
       <td style="font-size:.75rem;color:var(--text-3);font-family:monospace">[${d.bbox.join(", ")}]</td>
     </tr>
   `).join("");
+}
+
+// ── History detail modal ──────────────────────────────────────
+function openHistoryDetail(idx) {
+  const e = scanHistory[idx];
+  if (!e) return;
+
+  // Build modal HTML
+  const impactHtml = e.diagnosis.impact
+    .map(i => `<li>${i}</li>`).join("");
+  const stepsHtml = e.diagnosis.suggestions
+    .map((s, i) => `<li><span class="step-badge">${i+1}</span><span>${s.replace(/^\d+\.\s*/,"")}</span></li>`)
+    .join("");
+  const imgHtml = e.img
+    ? `<img src="data:image/jpeg;base64,${e.img}" class="modal-result-img" alt="Annotated"/>`
+    : `<div class="modal-no-img">No image available</div>`;
+
+  const pct = Math.min(Math.max(e.damage, 0), 100);
+  const meterFill = `width:${pct}%`;
+
+  const modal = document.createElement("div");
+  modal.className = "hd-overlay";
+  modal.id = "historyDetailModal";
+  modal.innerHTML = `
+    <div class="hd-modal">
+
+      <!-- Header -->
+      <div class="hd-header" style="border-left:4px solid ${e.color}">
+        <div class="hd-header-left">
+          <span class="cls-pill" style="background:${e.color}18;color:${e.color};font-size:.85rem;padding:4px 12px">${e.cls}</span>
+          <span class="hd-filename">${e.file}</span>
+          <span style="color:var(--text-3);font-size:.78rem">${e.time}</span>
+        </div>
+        <button class="hd-close" id="hdClose">✕</button>
+      </div>
+
+      <!-- Summary strip -->
+      <div class="hd-summary">
+        <div class="hd-sum-item">
+          <span class="hd-sum-label">Damage</span>
+          <span class="hd-sum-val" style="color:${dmgColor(e.damage)}">${e.damage}%</span>
+        </div>
+        <div class="hd-sum-sep"></div>
+        <div class="hd-sum-item">
+          <span class="hd-sum-label">Severity</span>
+          <span class="sev-badge ${sevCss(e.severity)}">${e.severity}</span>
+        </div>
+        <div class="hd-sum-sep"></div>
+        <div class="hd-sum-item">
+          <span class="hd-sum-label">Confidence</span>
+          <span class="hd-sum-val" style="color:${e.color}">${e.conf}%</span>
+        </div>
+        <div class="hd-sum-sep"></div>
+        <div class="hd-sum-item">
+          <span class="hd-sum-label">Scanned</span>
+          <span class="hd-sum-val">${e.time}</span>
+        </div>
+      </div>
+
+      <!-- Damage meter -->
+      <div class="hd-meter-wrap">
+        <div class="hd-meter-labels">
+          <span class="card-title">Damage Severity</span>
+          <span style="font-weight:800;color:${dmgColor(e.damage)}">${e.damage}%</span>
+        </div>
+        <div class="meter-track" style="margin:8px 0">
+          <div class="meter-gradient"></div>
+          <div class="meter-thumb" style="left:${pct}%"></div>
+        </div>
+        <div class="meter-labels">
+          <span class="ml green">No Damage</span>
+          <span class="ml yellow">Low</span>
+          <span class="ml orange">Moderate</span>
+          <span class="ml red">Critical</span>
+        </div>
+      </div>
+
+      <!-- Body: image + diagnosis -->
+      <div class="hd-body">
+
+        <!-- Annotated image -->
+        <div class="hd-img-col">
+          <div class="hd-section-title">Annotated Image</div>
+          ${imgHtml}
+          ${e.img ? `<a href="data:image/jpeg;base64,${e.img}" download="solar_${e.cls}_${e.damage}pct.jpg" class="btn-accent sm" style="margin-top:10px;display:inline-flex;align-items:center;gap:6px">↓ Download</a>` : ""}
+        </div>
+
+        <!-- Diagnosis -->
+        <div class="hd-diag-col">
+          <div class="hd-section-title">Diagnosis Report</div>
+
+          <div class="diag-block">
+            <div class="diag-block-title"><span class="diag-dot orange-dot"></span>What Happened</div>
+            <p class="diag-text">${e.diagnosis.what_happened}</p>
+          </div>
+
+          <div class="diag-block" style="margin-top:14px">
+            <div class="diag-block-title"><span class="diag-dot red-dot"></span>Impact on Panel</div>
+            <ul class="impact-list">${impactHtml}</ul>
+          </div>
+
+          <div class="diag-block suggest-block" style="margin-top:14px">
+            <div class="diag-block-title"><span class="diag-dot green-dot"></span>How to Improve</div>
+            <ol class="steps-list">${stepsHtml}</ol>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Footer -->
+      <div class="hd-footer">
+        <button class="btn-accent sm" id="hdViewResults">View in Results Page</button>
+        <button class="pill-btn" id="hdCloseBtn">Close</button>
+      </div>
+
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Close handlers
+  const close = () => modal.remove();
+  document.getElementById("hdClose").addEventListener("click", close);
+  document.getElementById("hdCloseBtn").addEventListener("click", close);
+  modal.addEventListener("click", ev => { if (ev.target === modal) close(); });
+
+  // View in Results page
+  document.getElementById("hdViewResults").addEventListener("click", () => {
+    close();
+    // Reconstruct a result-like object from history entry
+    renderResults({
+      annotated_image:  e.img || "",
+      primary_class:    e.cls,
+      primary_color:    e.color,
+      avg_damage:       e.damage,
+      severity:         e.severity,
+      detection_count:  1,
+      detections: [{
+        class:      e.cls,
+        confidence: e.conf,
+        damage_pct: e.damage,
+        severity:   e.severity,
+        color:      e.color,
+        bbox:       [0, 0, 0, 0],
+      }],
+      diagnosis: e.diagnosis,
+    });
+    navigateTo("results");
+  });
 }
 
 // ── Dashboard stats & charts ──────────────────────────────────
