@@ -579,6 +579,62 @@ $("clearHistoryBtn").addEventListener("click", () => {
   refreshDashboard();
 });
 
+// ── Stat card arrows ───────────────────────────────────────────
+// Total Scanned → History
+$("arrowTotal").addEventListener("click", () => navigateTo("history"));
+
+// Make the whole stat card clickable too
+document.querySelectorAll(".stat-card").forEach((card, i) => {
+  card.addEventListener("click", (e) => {
+    // Don't double-fire if arrow button was clicked
+    if (e.target.classList.contains("stat-arrow")) return;
+    const pages = ["history", "history", "results", "history"];
+    if (i === 2 && lastResult) navigateTo("results");
+    else navigateTo("history");
+  });
+});
+
+// Defects Found → History (filtered view — just navigate for now)
+$("arrowDefects").addEventListener("click", () => {
+  navigateTo("history");
+  // Highlight defect rows after render
+  setTimeout(() => {
+    document.querySelectorAll(".history-row").forEach(row => {
+      const clsCell = row.querySelector(".cls-pill");
+      if (clsCell && clsCell.textContent.trim() !== "Clean") {
+        row.style.background = "var(--purple-lt)";
+        setTimeout(() => row.style.background = "", 1800);
+      }
+    });
+  }, 100);
+});
+
+// Avg Damage → Results (show last result) or History
+$("arrowAvgDmg").addEventListener("click", () => {
+  if (lastResult) {
+    navigateTo("results");
+  } else {
+    navigateTo("history");
+  }
+});
+
+// Critical Panels → History (highlight critical rows)
+$("arrowCritical").addEventListener("click", () => {
+  navigateTo("history");
+  setTimeout(() => {
+    document.querySelectorAll(".history-row").forEach(row => {
+      const sevCell = row.querySelector(".sev-badge");
+      if (sevCell && (sevCell.textContent === "Critical" || sevCell.textContent === "High")) {
+        row.style.background = "#FEE2E2";
+        setTimeout(() => row.style.background = "", 1800);
+      }
+    });
+  }, 100);
+});
+
+// Donut chart arrow → History
+$("arrowDonut") && $("arrowDonut").addEventListener("click", () => navigateTo("history"));
+
 // ── Init ──────────────────────────────────────────────────────
 (async function init() {
   // Check auth first — redirect to login if not authenticated

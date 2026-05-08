@@ -116,7 +116,7 @@
         <div class="stat-card">
           <div class="stat-card-top">
             <span class="stat-label">Total Scanned</span>
-            <button class="stat-arrow">↗</button>
+            <button class="stat-arrow" id="arrowTotal" title="View History">↗</button>
           </div>
           <div class="stat-big" id="statTotal">0</div>
           <div class="stat-change positive" id="statTotalChange">— panels</div>
@@ -124,7 +124,7 @@
         <div class="stat-card">
           <div class="stat-card-top">
             <span class="stat-label">Defects Found</span>
-            <button class="stat-arrow">↗</button>
+            <button class="stat-arrow" id="arrowDefects" title="View History">↗</button>
           </div>
           <div class="stat-big" id="statDefects">0</div>
           <div class="stat-change negative" id="statDefectsChange">— this session</div>
@@ -132,7 +132,7 @@
         <div class="stat-card">
           <div class="stat-card-top">
             <span class="stat-label">Avg Damage</span>
-            <button class="stat-arrow">↗</button>
+            <button class="stat-arrow" id="arrowAvgDmg" title="View Results">↗</button>
           </div>
           <div class="stat-big" id="statAvgDmg">0%</div>
           <div class="stat-change" id="statAvgChange">— across scans</div>
@@ -140,7 +140,7 @@
         <div class="stat-card">
           <div class="stat-card-top">
             <span class="stat-label">Critical Panels</span>
-            <button class="stat-arrow">↗</button>
+            <button class="stat-arrow" id="arrowCritical" title="View History">↗</button>
           </div>
           <div class="stat-big" id="statCritical">0</div>
           <div class="stat-change negative" id="statCriticalChange">— need attention</div>
@@ -171,7 +171,7 @@
         <div class="card donut-card">
           <div class="card-head">
             <h3 class="card-title">Severity Split</h3>
-            <button class="stat-arrow">↗</button>
+            <button class="stat-arrow" id="arrowDonut" title="View History">↗</button>
           </div>
           <div class="donut-wrap">
             <canvas id="donutChart" width="160" height="160"></canvas>

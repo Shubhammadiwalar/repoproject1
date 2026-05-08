@@ -178,6 +178,13 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .stat-card {
   background: var(--white); border: 1px solid var(--border);
   border-radius: var(--r); padding: 20px; box-shadow: var(--sh-sm);
+  cursor: pointer;
+  transition: box-shadow .15s, transform .15s, border-color .15s;
+}
+.stat-card:hover {
+  box-shadow: var(--sh);
+  transform: translateY(-2px);
+  border-color: var(--purple-md);
 }
 .stat-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .stat-label { font-size: .78rem; font-weight: 600; color: var(--text-2); }
