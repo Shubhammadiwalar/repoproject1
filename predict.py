@@ -608,7 +608,7 @@ def parse_args():
     p = argparse.ArgumentParser(description="Solar Panel Defect Detector – Inference")
     p.add_argument("--source",  required=True,
                    help="Image file or folder")
-    p.add_argument("--yolo",    default="runs/detect/solar_panel_yolo/weights/best.pt",
+    p.add_argument("--yolo",    default="runs/detect/runs/solar_panel_yolo2/weights/best.pt",
                    help="Path to YOLO best.pt weights (auto-resolved if not found)")
     p.add_argument("--cnn",     default=None,
                    help="Path to CNN cnn_best.pth weights (optional)")

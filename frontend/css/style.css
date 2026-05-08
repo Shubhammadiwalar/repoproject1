@@ -605,3 +605,57 @@ input[type=range]::-webkit-slider-thumb {
   background: var(--bg);
   border-radius: 0 0 var(--r-lg) var(--r-lg);
 }
+
+/* ── Farm Grid Map ────────────────────────────────────────────── */
+.farm-stats {
+  font-size: .78rem; color: var(--text-2); font-weight: 600;
+  background: var(--purple-lt); padding: 3px 10px; border-radius: 100px;
+}
+.farm-grid-body {
+  display: grid; grid-template-columns: auto 1fr;
+  gap: 24px; align-items: start;
+}
+@media (max-width: 768px) { .farm-grid-body { grid-template-columns: 1fr; } }
+.farm-grid-left { display: flex; flex-direction: column; gap: 8px; }
+.farm-grid-label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); }
+.grid-map-img {
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  image-rendering: pixelated;
+  max-width: 100%;
+}
+.farm-grid-hint { font-size: .72rem; color: var(--text-3); }
+
+/* Panel crops grid */
+.panel-crops-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+.panel-crop-card {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--r-sm); overflow: hidden;
+  transition: transform .15s, box-shadow .15s;
+}
+.panel-crop-card:hover { transform: translateY(-2px); box-shadow: var(--sh); }
+.panel-crop-header {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 10px; background: var(--white);
+  border-bottom: 1px solid var(--border-lt);
+}
+.panel-crop-img {
+  width: 100%; display: block;
+  object-fit: cover; max-height: 120px;
+}
+.panel-crop-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 10px; background: var(--white);
+  border-top: 1px solid var(--border-lt);
+  font-size: .78rem;
+}
+
+/* Grid position badge */
+.grid-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 2px 8px; border-radius: 6px;
+  font-size: .75rem; font-weight: 800; font-family: monospace;
+  letter-spacing: .02em;
+}

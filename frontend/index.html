@@ -376,9 +376,29 @@
           <div class="card-head"><h3 class="card-title">Detection Details</h3></div>
           <div class="table-scroll">
             <table class="data-table">
-              <thead><tr><th>#</th><th>CLASS</th><th>CONFIDENCE</th><th>DAMAGE %</th><th>SEVERITY</th><th>BOUNDING BOX</th></tr></thead>
+              <thead><tr><th>#</th><th>GRID</th><th>CLASS</th><th>CONFIDENCE</th><th>DAMAGE %</th><th>SEVERITY</th><th>LOCATION</th></tr></thead>
               <tbody id="detTbody"></tbody>
             </table>
+          </div>
+        </div>
+
+        <!-- Farm grid map (shown only for multi-panel images) -->
+        <div class="card" id="farmGridCard" style="display:none">
+          <div class="card-head">
+            <svg viewBox="0 0 20 20" fill="currentColor" width="16" class="rcard-icon"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+            <h3 class="card-title">Panel Grid Map</h3>
+            <span class="farm-stats" id="farmStats"></span>
+          </div>
+          <div class="card-body farm-grid-body">
+            <div class="farm-grid-left">
+              <p class="farm-grid-label">Grid Overview</p>
+              <img id="gridMapImg" class="grid-map-img" alt="Panel grid map"/>
+              <p class="farm-grid-hint">Green = OK &nbsp;|&nbsp; Coloured = Defect detected</p>
+            </div>
+            <div class="farm-grid-right" id="panelCropsWrap">
+              <p class="farm-grid-label">Affected Panels (Zoomed)</p>
+              <div class="panel-crops-grid" id="panelCropsGrid"></div>
+            </div>
           </div>
         </div>
 

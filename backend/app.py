@@ -49,6 +49,7 @@ from predict import (
     severity_label,
     _draw_summary_panel,
 )
+from farm_detect import analyse_farm_image
 from ultralytics import YOLO
 
 # ── Load .env if present ───────────────────────────────────────────────────
@@ -115,7 +116,8 @@ def login_required(f):
 
 # ── Load model once ────────────────────────────────────────────────────────
 DEVICE       = "cuda" if torch.cuda.is_available() else "cpu"
-YOLO_WEIGHTS = find_best_weights(str(ROOT / "runs/detect/solar_panel_yolo/weights/best.pt"))
+# solar_panel_yolo2: best model — mAP50=0.9893, mAP50-95=0.9747, P=0.9638, R=0.9759
+YOLO_WEIGHTS = find_best_weights(str(ROOT / "runs/detect/runs/solar_panel_yolo2/weights/best.pt"))
 print(f"[API] Loading model : {YOLO_WEIGHTS}")
 print(f"[API] Device        : {DEVICE}")
 yolo_model   = YOLO(YOLO_WEIGHTS)
@@ -404,9 +406,24 @@ def predict():
     if damage_pcts:
         _draw_summary_panel(vis, avg_damage, primary)
 
-    # Encode annotated image → base64
-    _, buf   = cv2.imencode(".jpg", vis, [cv2.IMWRITE_JPEG_QUALITY, 92])
-    img_b64  = base64.b64encode(buf).decode("utf-8")
+    # ── Farm / multi-panel analysis ─────────────────────────────────────
+    farm_data = analyse_farm_image(img_bgr, detections_list)
+
+    # Use farm-annotated image (has grid overlay) if panels were found
+    if farm_data["total_panels"] > 1:
+        farm_vis = farm_data["annotated_farm"].copy()
+        # Also draw YOLO boxes on top of grid overlay
+        for det in detections_list:
+            x1, y1, x2, y2 = det["bbox"]
+            color = PALETTE[CLASSES.index(det["class"]) % len(PALETTE)] if det["class"] in CLASSES else (128,128,128)
+            draw_box(farm_vis, x1, y1, x2, y2, det["class"], det["confidence"]/100, color)
+        if damage_pcts:
+            _draw_summary_panel(farm_vis, avg_damage, primary)
+        _, buf = cv2.imencode(".jpg", farm_vis, [cv2.IMWRITE_JPEG_QUALITY, 92])
+    else:
+        _, buf = cv2.imencode(".jpg", vis, [cv2.IMWRITE_JPEG_QUALITY, 92])
+
+    img_b64 = base64.b64encode(buf).decode("utf-8")
 
     # Diagnosis
     diag = DIAGNOSIS.get(primary, DIAGNOSIS["Clean"])
@@ -420,14 +437,20 @@ def predict():
         "avg_damage":      avg_damage,
         "severity":        severity_label(avg_damage),
         "detection_count": len(detections_list),
-        "detections":      detections_list,
+        "detections":      farm_data["detections"],   # enriched with grid_label
         "diagnosis": {
             "what_happened": diag["what_happened"],
             "impact":        diag["impact"],
             "suggestions":   diag["suggestions"],
         },
+        # Farm-specific fields
+        "farm_mode":       farm_data["farm_mode"],
+        "total_panels":    farm_data["total_panels"],
+        "affected_panels": farm_data["affected_panels"],
+        "grid_map_b64":    farm_data["grid_map_b64"],
+        "panel_crops":     farm_data["panel_crops"],
+        "grid_panels":     farm_data["grid_panels"],
     })
-
 
 # ── Entry point ────────────────────────────────────────────────────────────
 if __name__ == "__main__":
