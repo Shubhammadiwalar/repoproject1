@@ -116,8 +116,8 @@ def login_required(f):
 
 # ── Load model once ────────────────────────────────────────────────────────
 DEVICE       = "cuda" if torch.cuda.is_available() else "cpu"
-# solar_panel_yolo2: best model — mAP50=0.9893, mAP50-95=0.9747, P=0.9638, R=0.9759
-YOLO_WEIGHTS = find_best_weights(str(ROOT / "runs/detect/runs/solar_panel_yolo2/weights/best.pt"))
+# Priority: solar_v4 (GradCAM++ tight labels) > solar_precise3 > newest
+YOLO_WEIGHTS = find_best_weights(str(ROOT / "runs/detect/solar_panel_yolo/weights/best.pt"))
 print(f"[API] Loading model : {YOLO_WEIGHTS}")
 print(f"[API] Device        : {DEVICE}")
 yolo_model   = YOLO(YOLO_WEIGHTS)

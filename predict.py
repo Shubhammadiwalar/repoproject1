@@ -173,13 +173,29 @@ DIAGNOSIS = {
 def find_best_weights(default: str) -> str:
     """
     Resolve the best available YOLO weights file.
-    Handles the case where Ultralytics doubled the project path
-    (e.g. runs/detect/runs/detect/...) as well as the clean path.
+    Priority order:
+      1. Exact path if it exists
+      2. solar_v4 (GradCAM++ tight labels, best model)
+      3. solar_precise3 (GradCAM labels)
+      4. Newest best.pt by modification time
     """
     if Path(default).exists():
         return default
 
-    # Search recursively under 'runs' for best.pt, pick newest by mtime
+    # Priority: prefer models trained with tight GradCAM labels
+    preferred = [
+        "runs/**/solar_v4*/weights/best.pt",
+        "runs/**/solar_precise3*/weights/best.pt",
+        "runs/**/solar_precise*/weights/best.pt",
+    ]
+    for pattern in preferred:
+        matches = glob.glob(pattern, recursive=True)
+        if matches:
+            found = sorted(matches, key=lambda p: Path(p).stat().st_mtime, reverse=True)[0]
+            print(f"[INFO] Using preferred model: {found}")
+            return found
+
+    # Fallback: newest best.pt
     candidates = sorted(
         glob.glob("runs/**/best.pt", recursive=True),
         key=lambda p: Path(p).stat().st_mtime,
@@ -189,6 +205,7 @@ def find_best_weights(default: str) -> str:
         found = candidates[0]
         print(f"[INFO] Weights not found at '{default}', auto-resolved to: {found}")
         return found
+
     raise FileNotFoundError(
         f"No YOLO weights found. Looked for '{default}' and searched runs/**.\n"
         "Make sure training has completed (train_yolo.py) before running predict.py."
