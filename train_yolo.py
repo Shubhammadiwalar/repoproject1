@@ -26,13 +26,13 @@ from ultralytics import YOLO
 # ── Config ─────────────────────────────────────────────────────────────────
 MODEL_SIZE   = "yolov8m.pt"   # medium model – good accuracy/speed on RTX 3050
 DATA_YAML    = "dataset.yaml"
-EPOCHS       = 120
+EPOCHS       = 150
 IMG_SIZE     = 640
 BATCH        = 16             # RTX 3050 6GB – reduce to 8 if OOM
 WORKERS      = 4
 AMP          = True           # automatic mixed precision (FP16 on RTX)
-PROJECT      = "runs"         # Ultralytics appends /detect/ automatically
-RUN_NAME     = "solar_precise"  # new name – precise GradCAM boxes
+PROJECT      = "runs"
+RUN_NAME     = "solar_v4"     # v4 – GradCAM++ tighter labels, YOLOv8m
 PATIENCE     = 25             # early-stopping patience
 DEVICE       = 0 if torch.cuda.is_available() else "cpu"
 
