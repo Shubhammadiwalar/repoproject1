@@ -273,73 +273,71 @@ def severity_color(pct: float):
 # ── Drawing helpers ─────────────────────────────────────────────────────────
 def draw_box(img, x1, y1, x2, y2, class_name, yolo_conf, color):
     """
-    Draw a rich bounding box showing:
-      • Class name
-      • Detection confidence %
-      • Damage percentage %
-      • Severity label
-      • Colour-coded damage bar
+    Draw a clean, highly visible bounding box with:
+    - Thick coloured rectangle around the damage area
+    - Corner accent marks (L-shaped corners) for precision feel
+    - Label pill above (or below) the box
+    - Damage % badge
     """
     h_img, w_img = img.shape[:2]
-    thickness = max(2, int(min(h_img, w_img) / 250))
+
+    damage_pct = compute_damage_pct(class_name, yolo_conf)
+    sev        = severity_label(damage_pct)
+    sev_col    = severity_color(damage_pct)
+
+    # ── 1. Main bounding box ─────────────────────────────────────────────
+    # Thick outer box
+    thickness = max(3, int(min(h_img, w_img) / 180))
     cv2.rectangle(img, (x1, y1), (x2, y2), color, thickness)
 
-    damage_pct  = compute_damage_pct(class_name, yolo_conf)
-    sev_label   = severity_label(damage_pct)
-    sev_color   = severity_color(damage_pct)
+    # ── 2. Corner accent marks (L-shapes at each corner) ─────────────────
+    corner_len = max(12, int(min(x2-x1, y2-y1) * 0.18))
+    ct = max(3, thickness + 1)
+    # Top-left
+    cv2.line(img, (x1, y1), (x1 + corner_len, y1), color, ct)
+    cv2.line(img, (x1, y1), (x1, y1 + corner_len), color, ct)
+    # Top-right
+    cv2.line(img, (x2, y1), (x2 - corner_len, y1), color, ct)
+    cv2.line(img, (x2, y1), (x2, y1 + corner_len), color, ct)
+    # Bottom-left
+    cv2.line(img, (x1, y2), (x1 + corner_len, y2), color, ct)
+    cv2.line(img, (x1, y2), (x1, y2 - corner_len), color, ct)
+    # Bottom-right
+    cv2.line(img, (x2, y2), (x2 - corner_len, y2), color, ct)
+    cv2.line(img, (x2, y2), (x2, y2 - corner_len), color, ct)
 
-    font        = cv2.FONT_HERSHEY_DUPLEX
-    font_small  = cv2.FONT_HERSHEY_SIMPLEX
-    base_scale  = max(0.45, min(h_img, w_img) / 900)
+    # ── 3. Label pill ─────────────────────────────────────────────────────
+    font       = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = max(0.40, min(h_img, w_img) / 700)
+    label      = f"{class_name}  {yolo_conf*100:.0f}%  |  {damage_pct:.0f}% dmg"
 
-    # ── Line 1: Class + confidence ──────────────────────────────────────
-    line1 = f"{class_name}  {yolo_conf*100:.1f}%"
-    # ── Line 2: Damage percentage + severity ────────────────────────────
-    line2 = f"Damage: {damage_pct:.1f}%  [{sev_label}]"
+    (tw, th), bl = cv2.getTextSize(label, font, font_scale, 1)
+    pad = 5
+    pill_h = th + bl + pad * 2
+    pill_w = tw + pad * 2
 
-    (w1, h1), bl1 = cv2.getTextSize(line1, font,       base_scale,       1)
-    (w2, h2), bl2 = cv2.getTextSize(line2, font_small, base_scale * 0.9, 1)
+    # Position: above box if space, else below
+    if y1 - pill_h - 4 >= 0:
+        py1 = y1 - pill_h - 4
+        py2 = y1 - 4
+    else:
+        py1 = y2 + 4
+        py2 = y2 + pill_h + 4
 
-    pad      = 5
-    box_w    = max(w1, w2) + pad * 2
-    box_h    = h1 + h2 + pad * 3 + bl1 + bl2
-    bar_h    = 6
+    px1 = max(0, x1)
+    px2 = min(w_img, px1 + pill_w)
 
-    # Position label box above the detection box; flip below if out of frame
-    lx1 = x1
-    ly1 = y1 - box_h - bar_h - pad
-    if ly1 < 0:
-        ly1 = y2 + pad
-    lx2 = lx1 + box_w
-    ly2 = ly1 + box_h
+    # Filled pill background
+    cv2.rectangle(img, (px1, py1), (px2, py2), color, -1)
+    # White text
+    cv2.putText(img, label,
+                (px1 + pad, py2 - bl - pad + th),
+                font, font_scale, (255, 255, 255), 1, cv2.LINE_AA)
 
-    # Dark background panel
-    overlay = img.copy()
-    cv2.rectangle(overlay, (lx1, ly1), (lx2, ly2 + bar_h + pad), (20, 20, 20), -1)
-    cv2.addWeighted(overlay, 0.75, img, 0.25, 0, img)
-
-    # Line 1 – class + conf (white)
-    cv2.putText(img, line1,
-                (lx1 + pad, ly1 + pad + h1),
-                font, base_scale, (255, 255, 255), 1, cv2.LINE_AA)
-
-    # Line 2 – damage % (colour-coded)
-    cv2.putText(img, line2,
-                (lx1 + pad, ly1 + pad + h1 + pad + h2 + bl2),
-                font_small, base_scale * 0.9, sev_color, 1, cv2.LINE_AA)
-
-    # ── Damage severity bar ──────────────────────────────────────────────
-    bar_y1 = ly2 + pad
-    bar_y2 = bar_y1 + bar_h
-    bar_x1 = lx1
-    bar_x2 = lx2
-
-    # Grey background track
-    cv2.rectangle(img, (bar_x1, bar_y1), (bar_x2, bar_y2), (60, 60, 60), -1)
-    # Filled portion proportional to damage %
-    fill_x = bar_x1 + int((bar_x2 - bar_x1) * damage_pct / 100)
-    if fill_x > bar_x1:
-        cv2.rectangle(img, (bar_x1, bar_y1), (fill_x, bar_y2), sev_color, -1)
+    # ── 4. Severity dot in top-right corner of box ────────────────────────
+    dot_r = max(6, thickness * 2)
+    cv2.circle(img, (x2 - dot_r - 2, y1 + dot_r + 2), dot_r, sev_col, -1)
+    cv2.circle(img, (x2 - dot_r - 2, y1 + dot_r + 2), dot_r, (255,255,255), 1)
 
     return damage_pct
 
@@ -439,28 +437,25 @@ def build_suggestion_panel(class_name: str, damage_pct: float, panel_w: int, img
 
 
 def _draw_summary_panel(img, avg_damage: float, primary_class: str):
-    """Draw overall damage summary at bottom of image."""
+    """Draw overall damage summary bar at the very bottom of image."""
     h, w = img.shape[:2]
-    panel_h = max(50, int(h * 0.08))
+    panel_h = max(36, int(h * 0.06))
     y1 = h - panel_h
-    y2 = h
 
-    # Semi-transparent dark panel
+    # Semi-transparent strip — only 6% of image height, doesn't cover boxes
     overlay = img.copy()
-    cv2.rectangle(overlay, (0, y1), (w, y2), (20, 20, 20), -1)
-    cv2.addWeighted(overlay, 0.8, img, 0.2, 0, img)
+    cv2.rectangle(overlay, (0, y1), (w, h), (15, 15, 15), -1)
+    cv2.addWeighted(overlay, 0.82, img, 0.18, 0, img)
 
-    sev_label = severity_label(avg_damage)
-    sev_color = severity_color(avg_damage)
-
-    text = f"Overall Damage: {avg_damage:.1f}%  |  Severity: {sev_label}  |  Primary: {primary_class}"
-    font = cv2.FONT_HERSHEY_DUPLEX
-    scale = max(0.5, min(h, w) / 1000)
+    sev  = severity_label(avg_damage)
+    scol = severity_color(avg_damage)
+    text = f"  Damage: {avg_damage:.1f}%   Severity: {sev}   Class: {primary_class}  "
+    font  = cv2.FONT_HERSHEY_SIMPLEX
+    scale = max(0.38, min(h, w) / 1100)
     (tw, th), bl = cv2.getTextSize(text, font, scale, 1)
-
-    tx = (w - tw) // 2
     ty = y1 + (panel_h + th) // 2
-    cv2.putText(img, text, (tx, ty), font, scale, sev_color, 2, cv2.LINE_AA)
+    cv2.putText(img, text, (max(0, (w - tw) // 2), ty),
+                font, scale, scol, 1, cv2.LINE_AA)
 
 
 def _draw_cnn_overlay(img, cnn_cls: str, cnn_conf: float):
