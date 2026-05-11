@@ -169,14 +169,18 @@ def signup_page():
 @app.route("/forgot-password.html")
 def forgot_password_page():
     resp = send_from_directory(str(FRONTEND_DIR), "forgot-password.html")
-    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    resp.headers["Pragma"]        = "no-cache"
+    resp.headers["Expires"]       = "0"
     return resp
 
 
 @app.route("/reset-password.html")
 def reset_password_page():
     resp = send_from_directory(str(FRONTEND_DIR), "reset-password.html")
-    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    resp.headers["Pragma"]        = "no-cache"
+    resp.headers["Expires"]       = "0"
     return resp
 
 
