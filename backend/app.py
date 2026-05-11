@@ -21,6 +21,8 @@ import base64
 import os
 import sys
 import tempfile
+import secrets
+import time
 from pathlib import Path
 from functools import wraps
 
@@ -71,6 +73,14 @@ GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 SECRET_KEY           = os.environ.get("SECRET_KEY", "solarscan-secret-key-change-in-production")
 GOOGLE_CONFIGURED    = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
 
+# SMTP config (optional — for real email sending)
+MAIL_SERVER   = os.environ.get("MAIL_SERVER", "smtp.gmail.com")
+MAIL_PORT     = int(os.environ.get("MAIL_PORT", "587"))
+MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "")
+MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "")
+MAIL_FROM     = os.environ.get("MAIL_FROM", MAIL_USERNAME)
+MAIL_ENABLED  = bool(MAIL_USERNAME and MAIL_PASSWORD)
+
 # ── App ────────────────────────────────────────────────────────────────────
 FRONTEND_DIR = ROOT / "frontend"
 
@@ -104,6 +114,10 @@ USERS = {
         "provider":      "email",
     }
 }
+
+# ── Password reset token store ─────────────────────────────────────────────
+# Format: { token: { email, expires_at } }
+RESET_TOKENS: dict = {}
 
 # ── Auth helpers ───────────────────────────────────────────────────────────
 def login_required(f):
@@ -150,6 +164,16 @@ def login_page():
 @app.route("/signup.html")
 def signup_page():
     return send_from_directory(str(FRONTEND_DIR), "signup.html")
+
+
+@app.route("/forgot-password.html")
+def forgot_password_page():
+    return send_from_directory(str(FRONTEND_DIR), "forgot-password.html")
+
+
+@app.route("/reset-password.html")
+def reset_password_page():
+    return send_from_directory(str(FRONTEND_DIR), "reset-password.html")
 
 
 @app.route("/dashboard")
@@ -234,6 +258,121 @@ def me():
         "name":   session["user_name"],
         "avatar": session.get("user_avatar"),
     })
+
+
+# ── Forgot / Reset password ─────────────────────────────────────────────────
+@app.route("/api/auth/forgot-password", methods=["POST"])
+def forgot_password():
+    data  = request.get_json()
+    email = (data.get("email") or "").strip().lower()
+
+    if not email or "@" not in email:
+        return jsonify({"error": "Please enter a valid email address."}), 400
+
+    # Always return success to prevent email enumeration
+    if email not in USERS:
+        return jsonify({
+            "success": True,
+            "message": "If that email exists, a reset link has been sent.",
+        })
+
+    # Generate secure token (expires in 30 minutes)
+    token      = secrets.token_urlsafe(32)
+    expires_at = time.time() + 1800   # 30 min
+    RESET_TOKENS[token] = {"email": email, "expires_at": expires_at}
+
+    reset_url = f"http://127.0.0.1:5000/reset-password.html?token={token}"
+
+    # Try to send real email if SMTP is configured
+    email_sent = False
+    if MAIL_ENABLED:
+        try:
+            import smtplib
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+
+            msg            = MIMEMultipart("alternative")
+            msg["Subject"] = "SolarScan – Reset Your Password"
+            msg["From"]    = MAIL_FROM
+            msg["To"]      = email
+
+            html = f"""
+            <div style="font-family:Inter,sans-serif;max-width:480px;margin:0 auto;padding:32px">
+              <div style="text-align:center;margin-bottom:24px">
+                <span style="font-size:1.4rem;font-weight:800;color:#1E1B4B">Solar<span style="color:#7C3AED">Scan</span></span>
+              </div>
+              <h2 style="color:#1E1B4B;margin-bottom:8px">Reset Your Password</h2>
+              <p style="color:#6B7280;margin-bottom:24px">
+                Click the button below to reset your password. This link expires in <strong>30 minutes</strong>.
+              </p>
+              <a href="{reset_url}"
+                 style="display:inline-block;background:#7C3AED;color:#fff;padding:12px 28px;
+                        border-radius:10px;text-decoration:none;font-weight:700;font-size:.95rem">
+                Reset Password
+              </a>
+              <p style="color:#9CA3AF;font-size:.8rem;margin-top:24px">
+                If you didn't request this, ignore this email. Your password won't change.
+              </p>
+            </div>
+            """
+            msg.attach(MIMEText(html, "html"))
+
+            with smtplib.SMTP(MAIL_SERVER, MAIL_PORT) as smtp:
+                smtp.starttls()
+                smtp.login(MAIL_USERNAME, MAIL_PASSWORD)
+                smtp.sendmail(MAIL_FROM, email, msg.as_string())
+            email_sent = True
+        except Exception as e:
+            print(f"[Mail Error] {e}")
+
+    return jsonify({
+        "success":    True,
+        "email_sent": email_sent,
+        "message":    "Reset link sent to your email." if email_sent
+                      else "Reset link generated (email not configured).",
+        # In dev mode without email, return the link directly
+        "reset_url":  reset_url if not email_sent else None,
+        "token":      token     if not email_sent else None,
+    })
+
+
+@app.route("/api/auth/reset-password", methods=["POST"])
+def reset_password():
+    data     = request.get_json()
+    token    = (data.get("token") or "").strip()
+    password = data.get("password") or ""
+
+    if not token or not password:
+        return jsonify({"error": "Token and new password are required."}), 400
+    if len(password) < 6:
+        return jsonify({"error": "Password must be at least 6 characters."}), 400
+
+    record = RESET_TOKENS.get(token)
+    if not record:
+        return jsonify({"error": "Invalid or expired reset link. Please request a new one."}), 400
+    if time.time() > record["expires_at"]:
+        del RESET_TOKENS[token]
+        return jsonify({"error": "This reset link has expired. Please request a new one."}), 400
+
+    email = record["email"]
+    if email not in USERS:
+        return jsonify({"error": "Account not found."}), 404
+
+    # Update password
+    USERS[email]["password_hash"] = generate_password_hash(password)
+    del RESET_TOKENS[token]   # one-time use
+
+    return jsonify({"success": True, "message": "Password updated successfully. You can now log in."})
+
+
+@app.route("/api/auth/validate-token", methods=["GET"])
+def validate_token():
+    """Check if a reset token is valid (used by reset page on load)."""
+    token  = request.args.get("token", "")
+    record = RESET_TOKENS.get(token)
+    if not record or time.time() > record["expires_at"]:
+        return jsonify({"valid": False, "error": "Invalid or expired reset link."})
+    return jsonify({"valid": True, "email": record["email"]})
 
 
 # ── Google OAuth routes ─────────────────────────────────────────────────────
