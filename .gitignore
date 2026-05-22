@@ -30,9 +30,19 @@ labels/
 # YOLO runs (large)
 runs/
 
+# Secrets — NEVER commit
+.env
+
+# Validator training data (large)
+validator_data/
+
 # Misc
 *.cache
 *.log
 yolo26n.pt
 yolov8m.pt
 .vscode/
+test_bbox_output.jpg
+compare_models.py
+generate_report.py
+system_architecture.png

@@ -85,12 +85,12 @@
         <p class="topbar-sub">Solar panel defect detection &amp; analysis dashboard</p>
       </div>
       <div class="topbar-right">
-        <button class="icon-btn" title="Search">
+        <button class="icon-btn" id="searchBtn" title="Search (Ctrl+K)">
           <svg viewBox="0 0 20 20" fill="currentColor" width="18"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/></svg>
         </button>
-        <button class="icon-btn notif-btn" title="Notifications">
+        <button class="icon-btn notif-btn" id="notifBtn" title="Notifications">
           <svg viewBox="0 0 20 20" fill="currentColor" width="18"><path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z"/></svg>
-          <span class="notif-badge" id="notifBadge" style="display:none">1</span>
+          <span class="notif-badge" id="notifBadge" style="display:none">0</span>
         </button>
         <div class="topbar-user">
           <div class="user-avatar">
@@ -213,45 +213,117 @@
 
     <!-- ── PAGE: ANALYSE ───────────────────────────────── -->
     <div class="page" id="page-analyse">
-      <div class="analyse-grid">
+      <div class="sec-head">
+        <h2>Analyse Panel</h2>
+        <p>Upload an image, video, or use your live camera for real-time detection</p>
+      </div>
 
-        <!-- Upload panel -->
+      <div class="analyse-grid">
+        <!-- Main input card with tabs -->
         <div class="card upload-panel">
           <div class="card-head">
-            <h3 class="card-title">Upload Panel Image</h3>
+            <h3 class="card-title">Input Feed</h3>
+            <span class="live-status-badge" id="analyseStatusBadge">Ready</span>
           </div>
           <div class="card-body">
-            <div class="dropzone" id="dropzone">
-              <input type="file" id="fileInput" accept="image/*" hidden/>
-              <div class="dz-icon">
-                <svg viewBox="0 0 64 64" fill="none">
-                  <circle cx="32" cy="32" r="30" fill="#EDE9FE"/>
-                  <path d="M32 18v20M24 26l8-8 8 8" stroke="#7C3AED" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                  <path d="M20 46h24" stroke="#7C3AED" stroke-width="3" stroke-linecap="round"/>
-                </svg>
-              </div>
-              <p class="dz-title">Drop image here</p>
-              <p class="dz-sub">or <span class="dz-link" id="browseBtn">browse files</span></p>
-              <p class="dz-hint">JPG · JPEG · PNG</p>
-            </div>
 
-            <div class="preview-area" id="previewArea" style="display:none">
-              <div class="preview-img-wrap">
-                <img id="previewImg" alt="Preview"/>
-                <button class="remove-btn" id="removeBtn">✕</button>
-              </div>
-              <div class="conf-row">
-                <label class="conf-label">Confidence Threshold</label>
-                <div class="slider-wrap">
-                  <input type="range" id="confSlider" min="5" max="95" value="25"/>
-                  <span id="confVal">25%</span>
-                </div>
-              </div>
-              <button class="btn-accent full-width" id="analyseBtn">
-                <svg viewBox="0 0 20 20" fill="currentColor" width="18"><path d="M9 9a2 2 0 114 0 2 2 0 01-4 0z"/><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a4 4 0 00-3.446 6.032l-2.261 2.26a1 1 0 101.414 1.415l2.261-2.261A4 4 0 1011 5z" clip-rule="evenodd"/></svg>
-                Analyse Panel
+            <!-- Mode tabs: Image / Video / Live -->
+            <div class="live-tabs" style="margin-bottom:16px">
+              <button class="live-tab active" data-amode="image">
+                <svg viewBox="0 0 20 20" fill="currentColor" width="14"><path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd"/></svg>
+                Image
+              </button>
+              <button class="live-tab" data-amode="video">
+                <svg viewBox="0 0 20 20" fill="currentColor" width="14"><path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/><path d="M14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z"/></svg>
+                Video
+              </button>
+              <button class="live-tab" data-amode="live">
+                <span class="live-rec-dot"></span>
+                Live
               </button>
             </div>
+
+            <!-- ── IMAGE MODE ── -->
+            <div class="amode-panel" id="amode-image">
+              <div class="dropzone" id="dropzone">
+                <input type="file" id="fileInput" accept="image/*" hidden/>
+                <div class="dz-icon">
+                  <svg viewBox="0 0 64 64" fill="none">
+                    <circle cx="32" cy="32" r="30" fill="#EDE9FE"/>
+                    <path d="M32 18v20M24 26l8-8 8 8" stroke="#7C3AED" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M20 46h24" stroke="#7C3AED" stroke-width="3" stroke-linecap="round"/>
+                  </svg>
+                </div>
+                <p class="dz-title">Drop image here</p>
+                <p class="dz-sub">or <span class="dz-link" id="browseBtn">browse files</span></p>
+                <p class="dz-hint">JPG · JPEG · PNG</p>
+              </div>
+              <div class="preview-area" id="previewArea" style="display:none">
+                <div class="preview-img-wrap">
+                  <img id="previewImg" alt="Preview"/>
+                  <button class="remove-btn" id="removeBtn">✕</button>
+                </div>
+                <div class="conf-row">
+                  <label class="conf-label">Confidence Threshold</label>
+                  <div class="slider-wrap">
+                    <input type="range" id="confSlider" min="5" max="95" value="25"/>
+                    <span id="confVal">25%</span>
+                  </div>
+                </div>
+                <button class="btn-accent full-width" id="analyseBtn">
+                  <svg viewBox="0 0 20 20" fill="currentColor" width="18"><path d="M9 9a2 2 0 114 0 2 2 0 01-4 0z"/><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a4 4 0 00-3.446 6.032l-2.261 2.26a1 1 0 101.414 1.415l2.261-2.261A4 4 0 1011 5z" clip-rule="evenodd"/></svg>
+                  Analyse Panel
+                </button>
+              </div>
+            </div>
+
+            <!-- ── VIDEO MODE ── -->
+            <div class="amode-panel" id="amode-video" style="display:none">
+              <div class="live-dropzone" id="videoDropzone2">
+                <input type="file" id="videoFileInput2" accept="video/*" hidden/>
+                <svg viewBox="0 0 48 48" fill="none" width="40"><circle cx="24" cy="24" r="22" fill="#EDE9FE"/><path d="M16 14v20l16-10L16 14z" fill="#7C3AED"/></svg>
+                <p>Drop video or <span class="dz-link" id="videoBrowseBtn2">browse</span></p>
+                <p style="font-size:.75rem;color:var(--text-3)">MP4 · AVI · MOV</p>
+              </div>
+              <div id="videoPreviewWrap2" style="display:none">
+                <video id="videoPreview2" class="live-preview-img" controls style="max-height:200px"></video>
+                <div class="live-interval-row" style="margin-top:12px">
+                  <label>Analyse every</label>
+                  <input type="range" id="videoInterval2" min="1" max="10" value="3" class="conf-slider"/>
+                  <span id="videoIntervalVal2">3s</span>
+                </div>
+                <div class="live-btn-row" style="margin-top:10px">
+                  <button class="btn-accent" id="videoStartBtn2">▶ Start</button>
+                  <button class="pill-btn" id="videoStopBtn2" disabled>■ Stop</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── LIVE CAMERA MODE ── -->
+            <div class="amode-panel" id="amode-live" style="display:none">
+              <div class="live-cam-select-row">
+                <select id="cameraSelect2" class="live-select">
+                  <option value="">Loading cameras…</option>
+                </select>
+              </div>
+              <div class="live-cam-wrap">
+                <video id="cameraFeed2" class="live-preview-img" autoplay muted playsinline style="max-height:200px"></video>
+                <canvas id="cameraCanvas2" style="display:none"></canvas>
+                <div class="live-cam-overlay" id="liveCamOverlay2" style="display:none">
+                  <span class="live-cam-label" id="liveCamLabel2">Analysing…</span>
+                </div>
+              </div>
+              <div class="live-interval-row" style="margin-top:10px">
+                <label>Interval</label>
+                <input type="range" id="liveInterval2" min="1" max="10" value="3" class="conf-slider"/>
+                <span id="liveIntervalVal2">3s</span>
+              </div>
+              <div class="live-btn-row" style="margin-top:10px">
+                <button class="btn-accent" id="liveStartBtn2">▶ Start</button>
+                <button class="pill-btn" id="liveStopBtn2" disabled>■ Stop</button>
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -281,9 +353,50 @@
             </div>
             <div><p class="mini-label">Session Scans</p><p class="mini-val" id="sessionCount">0</p></div>
           </div>
-        </div>
 
+          <!-- Live results mini panel (shown during video/live) -->
+          <div class="card" id="liveResultsMini" style="display:none">
+            <div class="card-head" style="padding:12px 14px">
+              <h3 class="card-title" style="font-size:.85rem">Live Results</h3>
+              <span class="live-status-badge running" id="liveMiniBadge">Running</span>
+            </div>
+            <div style="padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;justify-content:space-between;font-size:.8rem">
+                <span style="color:var(--text-3)">Frames</span>
+                <span style="font-weight:700" id="miniFrames">0</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:.8rem">
+                <span style="color:var(--text-3)">Last Class</span>
+                <span style="font-weight:700" id="miniClass">—</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:.8rem">
+                <span style="color:var(--text-3)">Damage</span>
+                <span style="font-weight:700;color:var(--red)" id="miniDamage">—</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:.8rem">
+                <span style="color:var(--text-3)">Alerts</span>
+                <span style="font-weight:700;color:var(--red)" id="miniAlerts">0</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
       </div>
+
+      <!-- Last frame (shown during video/live) -->
+      <div class="card" id="liveLastFrameCard" style="display:none;margin-top:16px">
+        <div class="card-head">
+          <h3 class="card-title">Last Analysed Frame</h3>
+          <span class="live-frame-time" id="liveFrameTime2"></span>
+        </div>
+        <div style="padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <img id="liveLastFrame2" class="live-last-frame" alt="Last frame"/>
+          <div class="live-log" id="liveLog2" style="max-height:200px">
+            <div class="live-log-empty">Waiting for frames…</div>
+          </div>
+        </div>
+      </div>
+
     </div><!-- /page-analyse -->
 
     <!-- ── PAGE: RESULTS ───────────────────────────────── -->
@@ -347,7 +460,7 @@
         <div class="results-grid">
           <div class="card">
             <div class="card-head"><h3 class="card-title">Annotated Image</h3>
-              <a id="downloadBtn" class="pill-btn accent" download="solar_analysis.jpg">↓ Download</a>
+              <a id="downloadBtn" class="pill-btn accent" download="solar_analysis.jpg">↓ Download Report</a>
             </div>
             <div class="card-body"><img id="resultImg" class="result-img" alt="Result"/></div>
           </div>
@@ -466,6 +579,36 @@
   </main>
 </div>
 
+<!-- ══════════  SEARCH MODAL  ══════════ -->
+<div class="search-overlay" id="searchOverlay" style="display:none">
+  <div class="search-modal">
+    <div class="search-input-row">
+      <svg viewBox="0 0 20 20" fill="currentColor" width="18" class="search-icon-inner">
+        <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
+      </svg>
+      <input type="text" id="searchInput" class="search-input" placeholder="Search pages, scans, defect classes…" autocomplete="off"/>
+      <kbd class="search-esc" id="searchEsc">ESC</kbd>
+    </div>
+    <div class="search-results" id="searchResults"></div>
+    <div class="search-footer">
+      <span><kbd>↑↓</kbd> navigate</span>
+      <span><kbd>↵</kbd> select</span>
+      <span><kbd>ESC</kbd> close</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════  NOTIFICATION PANEL  ══════════ -->
+<div class="notif-panel" id="notifPanel" style="display:none">
+  <div class="notif-header">
+    <span class="notif-title">Notifications</span>
+    <button class="notif-clear" id="notifClear">Clear all</button>
+  </div>
+  <div class="notif-list" id="notifList">
+    <div class="notif-empty">No notifications yet</div>
+  </div>
+</div>
+
 <!-- Loading overlay -->
 <div class="loading-overlay" id="loadingOverlay" style="display:none">
   <div class="loading-box">
@@ -475,7 +618,209 @@
   </div>
 </div>
 
-<script src="js/config.js"></script>
-<script src="js/app.js"></script>
+<script src="js/config.js?v=5"></script>
+<script src="js/app.js?v=5"></script>
+<script>
+// ── Inline: Tab switching + Video + Live camera ──────────────
+document.addEventListener("DOMContentLoaded", function() {
+
+  // ── Tab switching ─────────────────────────────────────────
+  var tabs = document.querySelectorAll(".live-tab[data-amode]");
+  tabs.forEach(function(tab) {
+    tab.addEventListener("click", function() {
+      tabs.forEach(function(t) { t.classList.remove("active"); });
+      tab.classList.add("active");
+      var mode = tab.dataset.amode;
+      ["image","video","live"].forEach(function(m) {
+        var p = document.getElementById("amode-" + m);
+        if (p) p.style.display = (m === mode) ? "block" : "none";
+      });
+      if (mode === "live") loadCameras();
+    });
+  });
+
+  // ── Video: wire browse + drag-drop ────────────────────────
+  var vBrowse = document.getElementById("videoBrowseBtn2");
+  var vDrop   = document.getElementById("videoDropzone2");
+  var vInput  = document.getElementById("videoFileInput2");
+  var vIntSlider = document.getElementById("videoInterval2");
+  var vIntVal    = document.getElementById("videoIntervalVal2");
+
+  if (vBrowse) vBrowse.addEventListener("click", function() { vInput && vInput.click(); });
+  if (vDrop)   vDrop.addEventListener("click",   function() { vInput && vInput.click(); });
+  if (vDrop) {
+    vDrop.addEventListener("dragover", function(e) { e.preventDefault(); vDrop.classList.add("drag-over"); });
+    vDrop.addEventListener("dragleave", function()  { vDrop.classList.remove("drag-over"); });
+    vDrop.addEventListener("drop", function(e) {
+      e.preventDefault(); vDrop.classList.remove("drag-over");
+      if (e.dataTransfer.files[0]) loadVideo(e.dataTransfer.files[0]);
+    });
+  }
+  if (vInput) vInput.addEventListener("change", function(e) {
+    if (e.target.files[0]) loadVideo(e.target.files[0]);
+  });
+  if (vIntSlider) vIntSlider.addEventListener("input", function() {
+    if (vIntVal) vIntVal.textContent = vIntSlider.value + "s";
+  });
+
+  function loadVideo(file) {
+    var preview = document.getElementById("videoPreview2");
+    var wrap    = document.getElementById("videoPreviewWrap2");
+    if (preview) preview.src = URL.createObjectURL(file);
+    if (vDrop)   vDrop.style.display = "none";
+    if (wrap)    wrap.style.display  = "block";
+    window._videoFile2 = file;
+  }
+
+  var vStartBtn = document.getElementById("videoStartBtn2");
+  var vStopBtn  = document.getElementById("videoStopBtn2");
+  var _vTimer   = null;
+
+  if (vStartBtn) vStartBtn.addEventListener("click", function() {
+    if (!window._videoFile2) return;
+    var video    = document.getElementById("videoPreview2");
+    var interval = parseInt((vIntSlider && vIntSlider.value) || 3) * 1000;
+    vStartBtn.disabled = true;
+    if (vStopBtn) vStopBtn.disabled = false;
+    video.play();
+    _vTimer = setInterval(function() {
+      if (!video || video.paused || video.ended) { stopVideo(); return; }
+      var c = document.createElement("canvas");
+      c.width = video.videoWidth || 640; c.height = video.videoHeight || 360;
+      c.getContext("2d").drawImage(video, 0, 0);
+      c.toBlob(function(blob) { sendFrame(blob, "frame.jpg"); }, "image/jpeg", 0.85);
+    }, interval);
+  });
+
+  function stopVideo() {
+    clearInterval(_vTimer); _vTimer = null;
+    if (vStartBtn) vStartBtn.disabled = false;
+    if (vStopBtn)  vStopBtn.disabled  = true;
+  }
+  if (vStopBtn) vStopBtn.addEventListener("click", stopVideo);
+
+  // ── Live camera ───────────────────────────────────────────
+  var _camStream = null;
+  var _lTimer    = null;
+
+  function loadCameras() {
+    var sel = document.getElementById("cameraSelect2");
+    if (!sel) return;
+    navigator.mediaDevices.getUserMedia({ video: true }).then(function(stream) {
+      // Store stream for reuse when Start is clicked
+      _camStream = stream;
+      var feed = document.getElementById("cameraFeed2");
+      if (feed) { feed.srcObject = stream; feed.play(); }
+      // Now enumerate devices with labels
+      return navigator.mediaDevices.enumerateDevices();
+    }).then(function(devs) {
+      var cams = devs.filter(function(d) { return d.kind === "videoinput"; });
+      sel.innerHTML = cams.length
+        ? cams.map(function(c,i) { return '<option value="'+c.deviceId+'">'+(c.label||"Camera "+(i+1))+'</option>'; }).join("")
+        : "<option>No cameras found</option>";
+    }).catch(function(err) {
+      sel.innerHTML = "<option>Camera access denied</option>";
+    });
+  }
+
+  var lIntSlider = document.getElementById("liveInterval2");
+  var lIntVal    = document.getElementById("liveIntervalVal2");
+  if (lIntSlider) lIntSlider.addEventListener("input", function() {
+    if (lIntVal) lIntVal.textContent = lIntSlider.value + "s";
+  });
+
+  var lStartBtn = document.getElementById("liveStartBtn2");
+  var lStopBtn  = document.getElementById("liveStopBtn2");
+
+  if (lStartBtn) lStartBtn.addEventListener("click", function() {
+    var sel      = document.getElementById("cameraSelect2");
+    var deviceId = sel && sel.value;
+    // If stream already running from preview, just start the timer
+    if (_camStream) {
+      startLiveTimer();
+      return;
+    }
+    var constraints = { video: deviceId ? { deviceId: { exact: deviceId } } : true };
+    navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
+      _camStream = stream;
+      var feed = document.getElementById("cameraFeed2");
+      feed.srcObject = stream;
+      feed.play().then(function() { startLiveTimer(); });
+    }).catch(function(err) { alert("Camera error: " + err.message); });
+  });
+
+  function startLiveTimer() {
+    lStartBtn.disabled = true;
+    if (lStopBtn) lStopBtn.disabled = false;
+    var feed     = document.getElementById("cameraFeed2");
+    var interval = parseInt((lIntSlider && lIntSlider.value) || 3) * 1000;
+    _lTimer = setInterval(function() {
+      var canvas = document.getElementById("cameraCanvas2");
+      if (!canvas || !feed) return;
+      canvas.width  = feed.videoWidth  || 640;
+      canvas.height = feed.videoHeight || 360;
+      canvas.getContext("2d").drawImage(feed, 0, 0);
+      canvas.toBlob(function(blob) { sendFrame(blob, "live.jpg"); }, "image/jpeg", 0.85);
+    }, interval);
+  }
+
+  function stopLive() {
+    clearInterval(_lTimer); _lTimer = null;
+    if (_camStream) { _camStream.getTracks().forEach(function(t) { t.stop(); }); _camStream = null; }
+    if (lStartBtn) lStartBtn.disabled = false;
+    if (lStopBtn)  lStopBtn.disabled  = true;
+  }
+  if (lStopBtn) lStopBtn.addEventListener("click", stopLive);
+
+  // ── Send frame to API ─────────────────────────────────────
+  function sendFrame(blob, filename) {
+    var form = new FormData();
+    form.append("image", blob, filename);
+    form.append("conf", "0.20");
+    fetch("/api/predict", { method: "POST", body: form, credentials: "include" })
+      .then(function(r) {
+        if (r.status === 401) { stopLive(); stopVideo(); return null; }
+        return r.json();
+      })
+      .then(function(data) {
+        if (!data || !data.success) return;
+        // Update last frame
+        var img = document.getElementById("liveLastFrame2");
+        if (img && data.annotated_image)
+          img.src = "data:image/jpeg;base64," + data.annotated_image;
+        // Show card
+        var card = document.getElementById("liveLastFrameCard");
+        if (card) card.style.display = "block";
+        // Update mini stats
+        var mini = document.getElementById("liveResultsMini");
+        if (mini) mini.style.display = "block";
+        var mc = document.getElementById("miniClass");
+        var md = document.getElementById("miniDamage");
+        var mf = document.getElementById("miniFrames");
+        if (mc) { mc.textContent = data.primary_class; mc.style.color = data.primary_color; }
+        if (md) { md.textContent = data.avg_damage + "%"; }
+        if (mf) { mf.textContent = parseInt(mf.textContent||0) + 1; }
+        // Log
+        appendLog(data.primary_class, data.avg_damage, data.severity, data.primary_color);
+      }).catch(function() {});
+  }
+
+  function appendLog(cls, dmg, sev, color) {
+    var log = document.getElementById("liveLog2");
+    if (!log) return;
+    var empty = log.querySelector(".live-log-empty");
+    if (empty) empty.remove();
+    var e = document.createElement("div");
+    e.className = "live-log-entry";
+    e.innerHTML = '<span class="live-log-time">' + new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"}) + '</span>'
+      + '<span class="live-log-class" style="color:' + color + '">' + cls + '</span>'
+      + '<span class="live-log-dmg">' + dmg + '%</span>'
+      + '<span>' + sev + '</span>';
+    log.insertBefore(e, log.firstChild);
+    while (log.children.length > 30) log.removeChild(log.lastChild);
+  }
+
+});
+</script>
 </body>
 </html>

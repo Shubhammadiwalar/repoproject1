@@ -1,676 +1,719 @@
 # SolarScan – Solar Panel Defect Detection System
-## Complete Project Report
+## Complete Project Report (Final Version)
+
+**GitHub:** https://github.com/Shubhammadiwalar/repoproject1
+**Date:** May 2026
+**Developer:** Shubham Madiwalar
 
 ---
 
 ## Table of Contents
-1. [Project Overview](#1-project-overview)
-2. [Problem Statement](#2-problem-statement)
-3. [Dataset](#3-dataset)
-4. [System Architecture](#4-system-architecture)
-5. [Model 1 – ResNet-50 CNN Classifier](#5-model-1--resnet-50-cnn-classifier)
-6. [GradCAM Label Generation](#6-gradcam-label-generation)
-7. [Model 2 – YOLOv8 Object Detector](#7-model-2--yolov8-object-detector)
-8. [Damage Percentage System](#8-damage-percentage-system)
-9. [Backend API](#9-backend-api)
-10. [Frontend Dashboard](#10-frontend-dashboard)
-11. [Authentication System](#11-authentication-system)
-12. [Results & Metrics](#12-results--metrics)
-13. [Technology Stack](#13-technology-stack)
-14. [Project Structure](#14-project-structure)
-15. [How to Run](#15-how-to-run)
-16. [Challenges & Solutions](#16-challenges--solutions)
-17. [Summary of Work Done](#17-summary-of-work-done)
+1. Project Overview
+2. Problem Statement
+3. System Architecture
+4. Dataset
+5. Model 1 – ResNet-50 CNN Classifier
+6. GradCAM++ Label Generation
+7. Model 2 – YOLOv8 Object Detector
+8. Training History
+9. Damage Percentage System
+10. Backend API
+11. MongoDB Database
+12. Frontend Dashboard
+13. Authentication System
+14. Forgot Password Flow
+15. PDF Report Generation
+16. Farm / Aerial Image Detection
+17. Results and Metrics
+18. Technology Stack
+19. Project Structure
+20. How to Run
+21. Challenges and Solutions
+22. Summary of All Work Done
 
 ---
 
 ## 1. Project Overview
 
-**SolarScan** is an end-to-end AI-powered solar panel defect detection and analysis system. It combines a **CNN classifier (ResNet-50)** and a **YOLOv8 object detector** to:
+**SolarScan** is a full-stack AI-powered solar panel defect detection and analysis system. It combines a CNN classifier (ResNet-50) and a YOLOv8 object detector to:
 
-- Detect defects on solar panels from photographs
-- Draw **precise bounding boxes** around the damaged region (not the whole image)
-- Calculate a **damage percentage** (0–100%) per detection
-- Provide **actionable repair recommendations** for each defect type
-- Present results through a **modern web dashboard** with charts, history, and diagnosis reports
-
-**GitHub Repository:** https://github.com/Shubhammadiwalar/repoproject1
+- Detect defects on solar panels from photographs with precise bounding boxes
+- Calculate a damage percentage (0-100%) per detection
+- Provide actionable repair recommendations for each defect type
+- Present results through a modern purple-themed web dashboard
+- Store all data persistently in MongoDB Atlas
+- Send password reset emails via Gmail SMTP
+- Generate downloadable PDF reports with full diagnosis
 
 ---
 
 ## 2. Problem Statement
 
-Solar panels degrade over time due to various environmental and physical factors. Manual inspection is:
-- Time-consuming and expensive
-- Inconsistent across inspectors
-- Difficult to scale across large solar farms
+Solar panels degrade over time due to environmental and physical factors. Manual inspection is time-consuming, expensive, and inconsistent. This system automates defect detection using AI to:
 
-**Goal:** Build an automated AI system that can analyse a photograph of a solar panel and:
-1. Classify the type of defect present
-2. Localise the exact damaged region with a bounding box
-3. Quantify the severity as a damage percentage
+1. Classify the type of defect (6 classes)
+2. Localise the exact damaged region with a tight bounding box
+3. Quantify severity as a damage percentage
 4. Recommend specific repair actions
+5. Track scan history per user in a database
 
 ---
 
-## 3. Dataset
+## 3. System Architecture
 
-### Source
-Custom solar panel defect image dataset with 6 classes.
+```
+Input Image
+    |
+    v
+[ResNet-50 CNN + GradCAM++]
+    |-- Classifies defect type
+    |-- Generates tight bounding box labels
+    v
+[YOLOv8m Detection Model]
+    |-- CSPDarknet backbone (pretrained COCO)
+    |-- PANet neck
+    |-- Decoupled detection head
+    |-- Output: bbox + class + confidence
+    v
+[Damage Analysis Engine]
+    |-- damage% = class_weight x confidence x 100
+    |-- Severity classification (6 levels)
+    |-- Diagnosis + repair suggestions
+    v
+[Flask REST API + MongoDB]
+    |-- Auth: email/password + Google OAuth
+    |-- Forgot password via Gmail SMTP
+    |-- Scan history persisted in MongoDB
+    v
+[Purple Dashboard Frontend]
+    |-- 6 pages: Dashboard, Analyse, Results, History, Classes, Settings
+    |-- Canvas charts (bar + donut)
+    |-- PDF report download
+    |-- Farm/aerial grid detection
+```
+
+---
+
+## 4. Dataset
 
 ### Split Summary
 
-| Split | Unique Images | Purpose |
-|-------|--------------|---------|
-| Train | **925** | Model training |
-| Val   | **549** | Hyperparameter tuning & early stopping |
-| Test  | **95**  | Final evaluation |
-| **Total** | **1,569** | |
+| Split | Unique Images |
+|-------|--------------|
+| Train | 925 |
+| Val   | 549 |
+| Test  | 95  |
+| **Total** | **1,569** |
 
 ### Class Distribution
 
 | Class | Train | Val | Test | Total |
 |-------|-------|-----|------|-------|
-| Bird-drop | 177 | 104 | 17 | **298** |
-| Clean | 169 | 102 | 18 | **289** |
-| Dusty | 162 | 97 | 16 | **275** |
-| Electrical-damage | 135 | 77 | 13 | **225** |
-| Physical-Damage | 132 | 78 | 15 | **225** |
-| Snow-Covered | 154 | 92 | 16 | **262** |
-
-### Image Characteristics
-- Formats: JPG, JPEG, PNG
-- Sizes: Varied (158×318 to 3000×2250 pixels)
-- Sources: Real-world solar panel photographs
-- Folder structure: `split/ClassName/image.jpg`
-
----
-
-## 4. System Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        SolarScan Pipeline                        │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  Input Image                                                      │
-│      │                                                            │
-│      ▼                                                            │
-│  ┌─────────────────────────────────────────────────────────┐     │
-│  │  STAGE 1: ResNet-50 CNN (Classification + GradCAM)      │     │
-│  │  • Classifies defect type (6 classes)                   │     │
-│  │  • GradCAM generates activation heatmap                 │     │
-│  │  • Heatmap → tight bounding box labels                  │     │
-│  │  • Labels used to train YOLO                            │     │
-│  └─────────────────────────────────────────────────────────┘     │
-│      │                                                            │
-│      ▼ (YOLO label files)                                         │
-│  ┌─────────────────────────────────────────────────────────┐     │
-│  │  STAGE 2: YOLOv8m Detection Model                       │     │
-│  │  • CSPDarknet CNN backbone (pretrained COCO)            │     │
-│  │  • PANet feature pyramid neck                           │     │
-│  │  • Decoupled detection head                             │     │
-│  │  • Output: bbox + class + confidence                    │     │
-│  └─────────────────────────────────────────────────────────┘     │
-│      │                                                            │
-│      ▼                                                            │
-│  ┌─────────────────────────────────────────────────────────┐     │
-│  │  STAGE 3: Damage Analysis                               │     │
-│  │  • damage% = class_weight × confidence × 100           │     │
-│  │  • Severity classification (6 levels)                   │     │
-│  │  • Diagnosis + repair suggestions                       │     │
-│  └─────────────────────────────────────────────────────────┘     │
-│      │                                                            │
-│      ▼                                                            │
-│  ┌─────────────────────────────────────────────────────────┐     │
-│  │  STAGE 4: Web Dashboard                                 │     │
-│  │  • Flask REST API backend                               │     │
-│  │  • Purple-themed dashboard frontend                     │     │
-│  │  • Login / Signup authentication                        │     │
-│  └─────────────────────────────────────────────────────────┘     │
-│                                                                   │
-└─────────────────────────────────────────────────────────────────┘
-```
+| Bird-drop | 177 | 104 | 17 | 298 |
+| Clean | 169 | 102 | 18 | 289 |
+| Dusty | 162 | 97 | 16 | 275 |
+| Electrical-damage | 135 | 77 | 13 | 225 |
+| Physical-Damage | 132 | 78 | 15 | 225 |
+| Snow-Covered | 154 | 92 | 16 | 262 |
 
 ---
 
 ## 5. Model 1 – ResNet-50 CNN Classifier
 
 ### Architecture
-- **Base model**: ResNet-50 (pretrained on ImageNet IMAGENET1K_V2)
-- **Fine-tuned layers**: layer3, layer4, custom FC head
-- **Frozen layers**: layer1, layer2 (feature extraction)
-- **Custom head**:
-  ```
-  Dropout(0.4) → Linear(2048→512) → ReLU → Dropout(0.3) → Linear(512→6)
-  ```
+- Base: ResNet-50 (pretrained ImageNet IMAGENET1K_V2)
+- Fine-tuned: layer3, layer4, custom FC head
+- Head: Dropout(0.4) -> Linear(2048->512) -> ReLU -> Dropout(0.3) -> Linear(512->6)
 
-### Training Configuration
+### Training Config
 
 | Parameter | Value |
 |-----------|-------|
-| Input size | 224 × 224 |
+| Input size | 224 x 224 |
 | Batch size | 32 |
 | Epochs | 50 (early stopping, patience=10) |
 | Optimizer | AdamW (lr=1e-4, weight_decay=1e-4) |
-| Scheduler | CosineAnnealingLR (T_max=50, eta_min=1e-6) |
+| Scheduler | CosineAnnealingLR |
 | Loss | CrossEntropyLoss (label_smoothing=0.1) |
-| AMP | Enabled (FP16 on RTX 3050) |
+| AMP | Enabled (FP16) |
 
-### Data Augmentation (Training)
-- Random crop (256→224)
-- Random horizontal/vertical flip
-- ColorJitter (brightness, contrast, saturation, hue)
-- Random rotation (±15°)
-- Normalisation (ImageNet mean/std)
+### CNN Test Results (95 images)
 
-### CNN Test Results (95 test images)
-
-| Class | Precision | Recall | F1-Score | Support |
-|-------|-----------|--------|----------|---------|
+| Class | Precision | Recall | F1 | Support |
+|-------|-----------|--------|----|---------|
 | Bird-drop | 1.00 | 1.00 | 1.00 | 17 |
 | Clean | 0.94 | 0.94 | 0.94 | 18 |
 | Dusty | 0.94 | 1.00 | 0.97 | 16 |
 | Electrical-damage | 1.00 | 0.92 | 0.96 | 13 |
 | Physical-Damage | 1.00 | 1.00 | 1.00 | 15 |
 | Snow-Covered | 1.00 | 1.00 | 1.00 | 16 |
-| **Overall Accuracy** | | | **0.98** | **95** |
-| **Macro Avg** | **0.98** | **0.98** | **0.98** | 95 |
-
-**Saved weights:** `cnn_best.pth` (98 MB)
+| **Overall Accuracy** | | | **0.98** | 95 |
 
 ---
 
-## 6. GradCAM Label Generation
+## 6. GradCAM++ Label Generation
 
-### Problem with Whole-Image Labels
-Initially, all YOLO labels were whole-image bounding boxes (`0.5 0.5 1.0 1.0`), meaning YOLO learned to draw a box around the entire panel instead of the actual damaged region.
+### Problem
+Initial labels were whole-image boxes (0.5 0.5 1.0 1.0) — YOLO drew boxes around the entire panel instead of the damage.
 
-### Solution: GradCAM-Based Precise Labels
-
-**GradCAM (Gradient-weighted Class Activation Mapping)** uses the trained CNN to find exactly where the damage is:
+### Solution: GradCAM++ (Gradient-weighted Class Activation Mapping++)
 
 ```
 1. Forward pass image through ResNet-50
-2. Compute gradients of predicted class score
-   w.r.t. last convolutional layer (layer4)
-3. Global average pool gradients → weights
-4. Weighted sum of feature maps → activation heatmap
-5. Apply ReLU → normalise to [0,1]
-6. Threshold heatmap (0.40) → binary mask
-7. Find contours → fit tight bounding box
-8. Add 6% padding → write YOLO label
+2. Compute pixel-wise gradient weights (GradCAM++ formula)
+3. Weight feature maps -> activation heatmap
+4. Apply Gaussian blur to reduce noise
+5. Threshold heatmap (per-class thresholds)
+6. Fit tight bounding box around high-activation region
+7. Add 4% padding -> write YOLO label
 ```
 
-### Results: Box Size Comparison
+### Per-Class Thresholds and Max Area
 
-| Class | Old (whole-image) | New (GradCAM) | Reduction |
-|-------|-------------------|---------------|-----------|
-| Bird-drop | 100% | **27%** avg | -73% |
-| Clean | 100% | **64%** (centred) | -36% |
-| Dusty | 100% | **31%** avg | -69% |
-| Electrical-damage | 100% | **37%** avg | -63% |
-| Physical-Damage | 100% | **37%** avg | -63% |
-| Snow-Covered | 100% | **49%** avg | -51% |
+| Class | Threshold | Max Box Area |
+|-------|-----------|-------------|
+| Bird-drop | 0.55 | 30% |
+| Clean | N/A | 75% (centred) |
+| Dusty | 0.45 | 55% |
+| Electrical-damage | 0.50 | 40% |
+| Physical-Damage | 0.50 | 45% |
+| Snow-Covered | 0.40 | 65% |
 
-**Labels generated:** 1,574 total (925 train + 549 val + 95 test)
+### Box Size Improvement
+
+| Class | Old (whole-image) | New (GradCAM++) | Reduction |
+|-------|-------------------|-----------------|-----------|
+| Bird-drop | 100% | 17.6% avg | -82% |
+| Electrical-damage | 100% | 21.3% avg | -79% |
+| Physical-Damage | 100% | 30.2% avg | -70% |
+| Dusty | 100% | 37.8% avg | -62% |
+| Snow-Covered | 100% | 32.2% avg | -68% |
 
 ---
 
 ## 7. Model 2 – YOLOv8 Object Detector
 
 ### Architecture
-- **Model**: YOLOv8m (medium variant)
-- **Parameters**: 25,859,794
-- **GFLOPs**: 79.1
-- **Backbone**: CSPDarknet (CNN, pretrained on COCO)
-- **Neck**: PANet (Path Aggregation Network) feature pyramid
-- **Head**: Decoupled detection head (bbox regression + classification)
-- **Input**: 640 × 640
+- Model: YOLOv8m (medium, 25.8M parameters, 79.1 GFLOPs)
+- Backbone: CSPDarknet CNN (pretrained COCO)
+- Neck: PANet feature pyramid
+- Head: Decoupled detection (bbox regression + classification)
+- Input: 640 x 640
 
-### Training Configuration
+### Training Config (solar_v4 – final model)
 
 | Parameter | Value |
 |-----------|-------|
-| Epochs | 120 |
-| Batch size | 16 |
-| Image size | 640 × 640 |
+| Epochs | 150 |
+| Batch | 16 |
+| Image size | 640 x 640 |
 | Optimizer | AdamW (auto-tuned, lr=0.001) |
 | AMP | Enabled (FP16) |
-| Early stopping | Patience = 25 |
-| Cache | RAM caching |
+| Early stopping | Patience=25 |
 | GPU | RTX 3050 6GB |
+| Labels | GradCAM++ tight boxes |
 
-### Augmentation Strategy
-Reduced from standard to preserve tight GradCAM boxes:
+### Augmentation (reduced to preserve tight boxes)
 
 | Augmentation | Value |
 |-------------|-------|
-| HSV hue shift | 0.015 |
+| HSV hue | 0.015 |
 | HSV saturation | 0.7 |
-| HSV brightness | 0.4 |
-| Rotation | ±10° |
+| Rotation | +-10 deg |
 | Translation | 0.05 (reduced) |
 | Scale | 0.4 (reduced) |
 | Mosaic | 0.8 |
 | MixUp | 0.1 |
-| Flip LR | 0.5 |
-
-### YOLOv8 Training Results (solar_precise3 run)
-
-| Metric | Best Epoch (119/120) | Final Epoch (120/120) |
-|--------|---------------------|----------------------|
-| **mAP50** | **0.9001** | 0.8955 |
-| **mAP50-95** | **0.6190** | 0.6226 |
-| **Precision** | **0.8561** | 0.8702 |
-| **Recall** | **0.8534** | 0.8366 |
-| Train box loss | — | 0.9442 |
-| Train cls loss | — | 0.7349 |
-| Val box loss | — | 1.1009 |
-| Val cls loss | — | 0.8152 |
-
-**Total training time:** ~5.5 hours on RTX 3050 6GB  
-**Best weights:** `runs/detect/runs/solar_precise3/weights/best.pt` (52 MB)
-
-### Training Runs History
-
-| Run Name | Model | Labels | Epochs | Notes |
-|----------|-------|--------|--------|-------|
-| solar_panel_yolo | YOLOv8m | Whole-image | 100 | Initial run |
-| solar_panel_yolo2–7 | YOLOv8m | Whole-image | 100 | Config fixes |
-| solar_precise | YOLOv8m | GradCAM | 120 | First precise run |
-| solar_precise2 | YOLOv8m | GradCAM | 120 | Tuned augmentation |
-| **solar_precise3** | **YOLOv8m** | **GradCAM** | **120** | **Best model** |
 
 ---
 
-## 8. Damage Percentage System
+## 8. Training History
+
+| Run Name | Labels | Epochs | Best mAP50 | Precision | Recall | Time |
+|----------|--------|--------|-----------|-----------|--------|------|
+| solar_panel_yolo | Whole-image | 28 | 0.957 | — | — | — |
+| solar_panel_yolo2 | Whole-image | 100 | **0.989** | 0.964 | 0.976 | — |
+| solar_precise | GradCAM v1 | 34 | 0.564 | — | — | — |
+| solar_precise3 | GradCAM v1 | 120 | 0.900 | 0.856 | 0.853 | 5.5h |
+| **solar_v4** | **GradCAM++** | **150** | **0.913** | **0.919** | **0.881** | **~7h** |
+
+**Active model:** `solar_v4` (GradCAM++ tight boxes, mAP50=0.913)
+
+Note: solar_panel_yolo2 had higher mAP50 (0.989) but used whole-image labels — boxes covered 99%+ of image. solar_v4 uses tight labels with boxes covering 17-38% of image, giving precise damage localisation.
+
+---
+
+## 9. Damage Percentage System
 
 ### Formula
 ```
-damage% = class_weight × yolo_confidence × 100
+damage% = class_weight x yolo_confidence x 100
 ```
 
 ### Class Weights
 
-| Class | Weight | Max Damage | Rationale |
-|-------|--------|------------|-----------|
-| Clean | 0.00 | 0% | No damage |
-| Dusty | 0.35 | 35% | Light, reversible |
-| Bird-drop | 0.60 | 60% | Moderate, corrosive |
-| Snow-Covered | 0.50 | 50% | Temporary blockage |
-| Physical-Damage | 0.90 | 90% | Structural damage |
-| Electrical-damage | 0.95 | 95% | Critical, fire risk |
+| Class | Weight | Max Damage |
+|-------|--------|------------|
+| Clean | 0.00 | 0% |
+| Dusty | 0.35 | 35% |
+| Bird-drop | 0.60 | 60% |
+| Snow-Covered | 0.50 | 50% |
+| Physical-Damage | 0.90 | 90% |
+| Electrical-damage | 0.95 | 95% |
 
 ### Severity Scale
 
 | Range | Level | Colour |
 |-------|-------|--------|
 | 0% | No Damage | Green |
-| 1–19% | Minimal | Light green |
-| 20–39% | Low | Yellow |
-| 40–59% | Moderate | Orange |
-| 60–79% | High | Red |
-| ≥80% | **Critical** | Dark red |
+| 1-19% | Minimal | Light green |
+| 20-39% | Low | Yellow |
+| 40-59% | Moderate | Orange |
+| 60-79% | High | Red |
+| >=80% | Critical | Dark red |
 
-### Diagnosis System
-Each class has a structured diagnosis with:
-- **What happened**: Plain-language description of the defect
-- **Impact on panel**: Performance effects (3–4 bullet points)
-- **How to improve**: Step-by-step repair recommendations (5–6 steps)
+### Diagnosis Database
+Each class has structured diagnosis with:
+- What happened (plain-language description)
+- Impact on panel (3-4 bullet points)
+- How to improve (5-6 numbered repair steps)
 
 ---
 
-## 9. Backend API
+## 10. Backend API
 
 ### Framework
-Flask 3.1.3 with flask-cors and flask-login
+Flask 3.1.3 + flask-cors + flask-mail + Authlib + PyMongo + ReportLab
 
-### Endpoints
+### All Endpoints
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| GET | `/` | — | Serves login or dashboard |
-| GET | `/login.html` | — | Login page |
-| GET | `/signup.html` | — | Signup page |
-| POST | `/api/auth/register` | — | Create account |
-| POST | `/api/auth/login` | — | Login, set session |
-| POST | `/api/auth/logout` | ✓ | Clear session |
-| GET | `/api/auth/me` | ✓ | Current user info |
-| GET | `/api/health` | ✓ | Model status + GPU info |
-| GET | `/api/classes` | ✓ | 6 defect classes + metadata |
-| POST | `/api/predict` | ✓ | Upload image → full analysis |
-
-### `/api/predict` Response Structure
-```json
-{
-  "success": true,
-  "annotated_image": "<base64 JPEG>",
-  "primary_class": "Electrical-damage",
-  "primary_color": "#DC2626",
-  "avg_damage": 91.3,
-  "severity": "Critical",
-  "detection_count": 1,
-  "detections": [{
-    "class": "Electrical-damage",
-    "confidence": 96.1,
-    "damage_pct": 91.3,
-    "severity": "Critical",
-    "color": "#DC2626",
-    "bbox": [45, 32, 280, 198]
-  }],
-  "diagnosis": {
-    "what_happened": "Electrical damage detected (burn marks / arc damage).",
-    "impact": ["Panel may produce zero output.", "Risk of fire hazard.", ...],
-    "suggestions": ["IMMEDIATELY disconnect panel.", "Call a technician.", ...]
-  }
-}
-```
+| GET | / | — | Login or dashboard |
+| GET | /login.html | — | Login page |
+| GET | /signup.html | — | Signup page |
+| GET | /forgot.html | — | Forgot password page |
+| GET | /reset-password.html | — | Reset password page |
+| POST | /api/auth/register | — | Create account |
+| POST | /api/auth/login | — | Login, set session |
+| POST | /api/auth/logout | — | Clear session |
+| GET | /api/auth/me | — | Current user info |
+| GET | /api/auth/google | — | Start Google OAuth |
+| GET | /api/auth/google/callback | — | Google OAuth callback |
+| POST | /api/auth/forgot-password | — | Send reset email |
+| POST | /api/auth/reset-password | — | Update password |
+| GET | /api/auth/validate-token | — | Check reset token |
+| GET | /api/health | Protected | Model + GPU status |
+| GET | /api/classes | Protected | 6 defect classes |
+| POST | /api/predict | Protected | Full detection analysis |
+| GET | /api/history | Protected | User scan history |
+| POST | /api/history | Protected | Save scan to DB |
+| POST | /api/report | Protected | Generate PDF report |
 
 ---
 
-## 10. Frontend Dashboard
+## 11. MongoDB Database
+
+### Connection
+- Provider: MongoDB Atlas (Free M0 tier)
+- Cluster: intershippro1.nkhshzd.mongodb.net
+- Database: solarscan
+
+### Collections
+
+| Collection | Purpose | Indexes |
+|------------|---------|---------|
+| users | User accounts (email, name, hashed password, avatar, provider) | email (unique) |
+| reset_tokens | Password reset tokens with 30-min TTL auto-expiry | token (unique), expires_at (TTL) |
+| scan_history | All scan results per user | user_email + time |
+
+### DB Helper Functions
+- db_get_user(email) — fetch user
+- db_create_user(...) — register new user
+- db_update_user(email, updates) — update fields
+- db_save_token(token, email, expires_at) — store reset token
+- db_get_token(token) — validate and fetch token
+- db_delete_token(token) — one-time use deletion
+- db_save_scan(user_email, scan) — persist scan result
+- db_get_history(user_email, limit) — fetch scan history
+
+All functions have in-memory fallback when MongoDB is not configured.
+
+---
+
+## 12. Frontend Dashboard
 
 ### Design
-Inspired by modern fintech dashboards (FinSet-style):
-- **Colour scheme**: Purple/violet (#7C3AED) accent on white cards
-- **Background**: Soft lavender (#E8E4F8)
-- **Layout**: Fixed left sidebar + scrollable main content
-- **Typography**: Inter font
+Purple/violet (#7C3AED) accent on white cards, lavender outer background, Inter font.
+Inspired by modern fintech dashboard (FinSet-style).
 
 ### Pages
 
 | Page | Description |
 |------|-------------|
-| **Dashboard** | 4 stat cards + bar chart + donut chart + recent scans table |
-| **Analyse Panel** | Drag-drop upload + confidence slider + mini stat cards |
-| **Results** | Summary strip + damage meter + annotated image + diagnosis + detection table |
-| **History** | Full scan history table for the session |
-| **Defect Classes** | 6 class cards with colour coding and damage ranges |
-| **Settings** | Model info + detection configuration |
+| Dashboard | 4 stat cards + bar chart + donut chart + recent scans table |
+| Analyse Panel | Drag-drop upload + confidence slider + mini stat cards |
+| Results | Summary strip + damage meter + annotated image + diagnosis + detection table + farm grid |
+| History | Full scan history, clickable rows open detail modal |
+| Defect Classes | 6 class cards with colour coding |
+| Settings | Model info + detection config |
 
-### Charts (Canvas API — no external library)
-- **Bar chart**: Detection count + average damage % per class
-- **Donut chart**: Severity distribution across all scans
-
-### Key UI Components
-- Animated damage severity meter (green → red gradient)
-- Colour-coded severity badges
-- Confidence bar charts in detection table
-- Real-time GPU status indicator in sidebar
-- Session scan counter
+### Key Features
+- Clickable stat cards with arrow navigation
+- History row click -> full diagnosis modal with zoomed image
+- Canvas bar chart (detections by class) + donut chart (severity split)
+- Animated damage severity meter (green to red gradient)
+- Farm/aerial grid map showing panel matrix positions
+- PDF report download button
 
 ---
 
-## 11. Authentication System
+## 13. Authentication System
 
-### Implementation
-Flask session-based authentication using `werkzeug.security` for password hashing.
+### Methods
+1. Email/password (bcrypt hashed via Werkzeug)
+2. Google OAuth 2.0 (Authlib + Google Cloud Console)
 
-### Flow
-```
-User visits / → Not logged in → Redirect to /login.html
-                                        ↓
-                              Enter email + password
-                                        ↓
-                              POST /api/auth/login
-                                        ↓
-                              Session cookie set
-                                        ↓
-                              Redirect to dashboard
-```
-
-### Security Features
-- Passwords hashed with `werkzeug.security.generate_password_hash` (PBKDF2-SHA256)
-- Session-based auth (server-side, not JWT)
-- All API endpoints protected with `@login_required` decorator
-- 401 response with redirect hint for unauthenticated requests
-
-### Login Page Design (Sleeknote-inspired)
-- **Left panel** (white): Logo, "Welcome Back" heading, Google OAuth button (UI), email/password fields, "Keep me logged in" checkbox, "Forgot password?" link, purple submit button
-- **Right panel** (light blue): Brand tagline, SVG illustration, feature pills
-- Demo credentials hint box
-
-### Signup Page
-- Same split layout
-- Additional fields: Full name, confirm password
-- Live password strength meter (5 levels: Very Weak → Very Strong)
-- Terms of service checkbox
+### Security
+- Passwords hashed with PBKDF2-SHA256
+- Server-side session cookies
+- login_required decorator on all ML endpoints
+- Email enumeration protection on forgot-password
 
 ### Demo Credentials
-```
-Email:    admin@solarscan.com
-Password: admin123
-```
+- Email: admin@solarscan.com
+- Password: admin123
 
 ---
 
-## 12. Results & Metrics
+## 14. Forgot Password Flow
+
+### Flow
+1. User clicks "Forgot your password?" on login page
+2. Enters email on /forgot.html
+3. Server generates 32-byte cryptographic token (30-min TTL)
+4. Token saved to MongoDB reset_tokens collection
+5. Gmail SMTP sends HTML email with reset button
+6. Email link uses network IP (works from phone on same WiFi)
+7. /reset-password.html validates token from MongoDB
+8. User enters new password -> bcrypt hash saved to MongoDB
+9. Token deleted (one-time use)
+
+### Email Config
+- SMTP: smtp.gmail.com:587 (STARTTLS)
+- From: shubhammadiwalar717@gmail.com
+- App Password: configured in .env
+
+---
+
+## 15. PDF Report Generation
+
+### Library: ReportLab 4.4.10
+
+### PDF Contents
+1. Header: SolarScan logo + report title
+2. User info: name, email, scan time, filename
+3. Summary cards: class, damage%, severity, detection count
+4. Damage severity meter (colour gradient bar)
+5. Annotated image (full size with bounding boxes)
+6. Diagnosis: What Happened / Impact / How to Improve
+7. Detection details table (grid position, class, confidence, damage%, severity)
+8. Footer: timestamp + model info
+
+### Download
+- Button: "Download Report" on Results page
+- Format: PDF
+- Filename: SolarScan_ClassName_XX.Xpct.pdf
+- Generated server-side via /api/report POST endpoint
+
+---
+
+## 16. Farm / Aerial Image Detection
+
+### Feature
+For drone/aerial images showing multiple panels in a grid:
+
+1. Detect individual panel regions using HSV colour segmentation + contour analysis
+2. Cluster panels into rows and columns
+3. Assign matrix coordinates (A1, B2, C3...)
+4. Match YOLO detections to grid positions
+5. Crop zoomed view of each defective panel
+6. Generate visual grid map (green=OK, coloured=defect)
+
+### Grid Map
+- Rows labelled A, B, C...
+- Columns labelled 1, 2, 3...
+- Each cell shows grid label + damage%
+- Defective cells highlighted in class colour
+- Shown in Results page below detection table
+
+---
+
+## 17. Results and Metrics
 
 ### CNN Classifier (ResNet-50)
 
 | Metric | Value |
 |--------|-------|
-| Test Accuracy | **98.0%** |
-| Macro Precision | **0.98** |
-| Macro Recall | **0.98** |
-| Macro F1-Score | **0.98** |
-| Perfect classes (F1=1.0) | Bird-drop, Physical-Damage, Snow-Covered |
+| Test Accuracy | 98.0% |
+| Macro Precision | 0.98 |
+| Macro Recall | 0.98 |
+| Macro F1 | 0.98 |
+| Perfect F1=1.0 classes | Bird-drop, Physical-Damage, Snow-Covered |
 
-### YOLOv8 Detector (solar_precise3)
+### YOLOv8m – solar_v4 (Active Model)
 
 | Metric | Value |
 |--------|-------|
-| **mAP50** | **0.9001** |
-| **mAP50-95** | **0.6190** |
-| **Precision** | **0.8561** |
-| **Recall** | **0.8534** |
-| Training epochs | 120 |
-| Training time | ~5.5 hours |
+| mAP50 | 0.9126 |
+| mAP50-95 | 0.7330 |
+| Precision | 0.9194 |
+| Recall | 0.8811 |
+| Best epoch | 148/150 |
+| Training time | ~7 hours |
 | GPU | RTX 3050 6GB |
 
 ### Bounding Box Precision
-- Old (whole-image): 100% of image area
-- New (GradCAM): **27–49%** of image area (damage classes)
-- Improvement: **51–73% reduction** in box area → boxes now tightly surround actual damage
 
-### Inference Speed
-- GPU (RTX 3050): ~15–25ms per image
-- CPU fallback: ~200–400ms per image
+| Class | Old box area | New box area | Improvement |
+|-------|-------------|-------------|-------------|
+| Bird-drop | 99.6% | 17.6% | -82% |
+| Electrical-damage | 99.9% | 21.3% | -79% |
+| Physical-Damage | 99.6% | 30.2% | -70% |
+| Dusty | 99.8% | 37.8% | -62% |
+| Snow-Covered | 99.7% | 32.2% | -68% |
 
 ---
 
-## 13. Technology Stack
+## 18. Technology Stack
 
 ### Hardware
-| Component | Specification |
-|-----------|--------------|
+| Component | Spec |
+|-----------|------|
 | GPU | NVIDIA GeForce RTX 3050 6GB Laptop GPU |
 | CUDA | 12.8 |
 | OS | Windows 11 |
+| Python | 3.14.2 |
 
-### Software
+### Libraries
 
 | Library | Version | Purpose |
 |---------|---------|---------|
-| Python | 3.14.2 | Runtime |
-| PyTorch | 2.11.0+cu128 | Deep learning framework |
-| Ultralytics | 8.4.34 | YOLOv8 implementation |
-| torchvision | 0.26.0 | ResNet-50, transforms |
-| OpenCV | 4.13.0 | Image processing, drawing |
-| NumPy | 2.4.2 | Array operations |
+| PyTorch | 2.11.0+cu128 | Deep learning |
+| Ultralytics | 8.4.34 | YOLOv8 |
+| torchvision | 0.26.0 | ResNet-50 |
+| OpenCV | 4.13.0 | Image processing |
+| NumPy | 2.4.2 | Arrays |
 | Pillow | 12.1.1 | Image loading |
-| scikit-learn | 1.8.0 | Classification report, confusion matrix |
-| Matplotlib | 3.10.8 | Training curves, plots |
-| Seaborn | — | Confusion matrix heatmap |
-| Flask | 3.1.3 | Web API server |
-| flask-cors | — | Cross-origin requests |
+| scikit-learn | 1.8.0 | Metrics |
+| Matplotlib | 3.10.8 | Plots |
+| Flask | 3.1.3 | Web API |
+| flask-cors | — | CORS |
+| flask-mail | 0.10.0 | Email |
+| Authlib | 1.7.2 | Google OAuth |
 | Werkzeug | 3.1.6 | Password hashing |
+| PyMongo | 4.17.0 | MongoDB |
+| ReportLab | 4.4.10 | PDF generation |
 
 ---
 
-## 14. Project Structure
+## 19. Project Structure
 
 ```
 project/
-│
-├── backend/
-│   └── app.py                  # Flask REST API + Auth (280 lines)
-│
-├── frontend/
-│   ├── index.html              # Dashboard (600+ lines)
-│   ├── login.html              # Login page (250 lines)
-│   ├── signup.html             # Signup page (280 lines)
-│   ├── css/
-│   │   ├── style.css           # Dashboard styles (580 lines)
-│   │   └── auth.css            # Auth page styles (350 lines)
-│   └── js/
-│       ├── config.js           # API base URL config
-│       └── app.js              # Dashboard logic + charts (400 lines)
-│
-├── predict.py                  # Core detection + damage % + suggestions (450 lines)
-├── train_yolo.py               # YOLOv8 training script (120 lines)
-├── train_cnn.py                # ResNet-50 training script (200 lines)
-├── generate_labels.py          # GradCAM label generator (200 lines)
-├── visualise_labels.py         # Label preview tool (70 lines)
-├── dataset.yaml                # YOLO dataset config
-│
-├── cnn_best.pth                # CNN weights (98 MB)
-├── cnn_classification_report.txt
-├── cnn_confusion_matrix.png
-├── cnn_training_curves.png
-│
-├── .gitignore
-└── README.md
-
+|
+|-- backend/
+|   +-- app.py                  Flask API + Auth + MongoDB + PDF (760 lines)
+|
+|-- frontend/
+|   |-- index.html              Dashboard (600+ lines)
+|   |-- login.html              Login page (Sleeknote design)
+|   |-- signup.html             Signup with password strength meter
+|   |-- forgot.html             Forgot password page
+|   |-- forgot-password.html    (legacy, redirects)
+|   |-- reset-password.html     Reset password with token validation
+|   |-- css/
+|   |   |-- style.css           Dashboard styles (580+ lines)
+|   |   +-- auth.css            Auth page styles (350+ lines)
+|   +-- js/
+|       |-- config.js           API base URL
+|       +-- app.js              Dashboard logic + charts (400+ lines)
+|
+|-- predict.py                  Detection + damage% + drawing (450 lines)
+|-- train_yolo.py               YOLOv8 training (120 lines)
+|-- train_cnn.py                ResNet-50 training (200 lines)
+|-- generate_labels.py          Original GradCAM labels
+|-- improve_labels.py           GradCAM++ improved labels
+|-- farm_detect.py              Farm/aerial grid detection (350 lines)
+|-- visualise_labels.py         Label preview tool
+|-- dataset.yaml                YOLO dataset config
+|-- .env                        Credentials (not committed)
+|-- .env.example                Template for credentials
+|-- README.md                   Setup documentation
+|-- PROJECT_REPORT.md           This report
+|
 Code Statistics:
-  Backend Python:   8 files,  2,125 lines
-  Frontend HTML:    4 files,  1,334 lines
-  Frontend CSS:     3 files,  1,228 lines
-  Frontend JS:      3 files,    718 lines
-  Total:           ~5,400 lines of code
+  Backend Python:  12 files, 3,601 lines
+  Frontend HTML:    7 files, 2,219 lines
+  Frontend CSS:     3 files, 1,402 lines
+  Frontend JS:      3 files, 1,002 lines
+  Total:          ~8,224 lines of code
+  Git commits:    17
 ```
 
 ---
 
-## 15. How to Run
+## 20. How to Run
 
 ### Prerequisites
 ```bash
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
-pip install ultralytics opencv-python pillow numpy matplotlib seaborn scikit-learn flask flask-cors werkzeug
+pip install ultralytics opencv-python pillow numpy matplotlib seaborn scikit-learn
+pip install flask flask-cors flask-mail authlib pymongo[srv] reportlab werkzeug
 ```
 
-### Step 1 – Train CNN (if not already done)
+### Step 1 – Train CNN
 ```bash
 python train_cnn.py
 # Output: cnn_best.pth
 ```
 
-### Step 2 – Generate GradCAM Labels
+### Step 2 – Generate GradCAM++ Labels
 ```bash
-python generate_labels.py
+python improve_labels.py
 # Output: .txt label files alongside each image
 ```
 
 ### Step 3 – Train YOLOv8
 ```bash
 python train_yolo.py
-# Output: runs/detect/runs/solar_precise/weights/best.pt
+# Output: runs/detect/runs/solar_v4/weights/best.pt
 ```
 
-### Step 4 – Run the Dashboard
+### Step 4 – Configure .env
+```
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+SECRET_KEY=...
+MAIL_USERNAME=your@gmail.com
+MAIL_PASSWORD=your-app-password
+MONGO_URI=mongodb+srv://user:pass@cluster.mongodb.net/solarscan
+```
+
+### Step 5 – Run Dashboard
 ```bash
 python backend/app.py
 # Open: http://127.0.0.1:5000
 ```
 
-### Step 5 – Run CLI Inference (optional)
-```bash
-python predict.py --source test --output predictions --conf 0.25
-```
-
 ---
 
-## 16. Challenges & Solutions
+## 21. Challenges and Solutions
 
 | Challenge | Solution |
 |-----------|----------|
-| **Whole-image bounding boxes** — YOLO drew boxes around entire panel, not damage | Implemented GradCAM on ResNet-50 to generate tight, damage-localised labels |
-| **CPU-only PyTorch** — `torch 2.11.0+cpu` installed, no GPU | Reinstalled with `--index-url https://download.pytorch.org/whl/cu128` |
-| **YOLO label path mismatch** — Ultralytics looked for labels next to images, not in `labels/` folder | Regenerated labels alongside images (same directory, `.txt` extension) |
-| **Doubled project path** — `runs/detect/runs/detect/...` | Fixed `PROJECT = "runs"` (Ultralytics appends `/detect/` automatically) |
-| **Flask catch-all route blocking API** — `/<path:filename>` intercepted POST to `/api/auth/login` | Replaced catch-all with explicit `/css/`, `/js/`, `/assets/` routes |
-| **Stale YOLO cache** — Old `.cache` files caused wrong label counts | Deleted all `.cache` files before each retrain |
-| **PowerShell stderr** — Git informational output treated as errors | Confirmed success by checking `origin/main` tracking, not exit code |
-| **Port conflict** — Old server still running on 5000 | Killed all Python processes with `Get-Process python | Stop-Process` |
+| Whole-image bounding boxes | GradCAM++ with per-class thresholds and max area caps |
+| CPU-only PyTorch | Reinstalled with --index-url https://download.pytorch.org/whl/cu128 |
+| YOLO label path mismatch | Labels placed alongside images (same directory) |
+| Doubled project path in runs/ | Fixed PROJECT = "runs" (Ultralytics appends /detect/) |
+| Flask catch-all blocking API POST | Replaced catch-all with explicit /css/, /js/ routes |
+| .env created as directory on Windows | Used Out-File -Encoding utf8 instead of heredoc |
+| UTF-8 BOM in .env breaking parsing | Changed encoding to utf-8-sig |
+| Google OAuth 400 Bad Request | Hardcoded redirect_uri in authorize_redirect() |
+| Google OAuth duplicate redirect_uri | Removed redirect_uri from authorize_access_token() |
+| Google OAuth deleted_client | Created new OAuth client, updated .env |
+| Browser caching old forgot-password JS | Renamed to /forgot.html (new URL, no cache) |
+| Reset link 127.0.0.1 not reachable on phone | Used request.host to generate network-IP link |
+| MongoDB .env not loading | Fixed utf-8-sig encoding + is_file() check |
+| USERS dict not replaced in forgot_password | Replaced all remaining USERS references with db_get_user() |
+| Stale server on port 5000 | Kill all Python processes before restart |
 
 ---
 
-## 17. Summary of Work Done
+## 22. Summary of All Work Done
 
-### Phase 1 – Data & Environment Setup
-- ✅ Analysed dataset structure (6 classes, train/val/test splits)
-- ✅ Installed PyTorch with CUDA 12.8 support for RTX 3050
-- ✅ Verified GPU detection and tensor operations
-- ✅ Generated initial whole-image YOLO labels
+### Phase 1 – Environment & Data
+- Analysed dataset (6 classes, 1,569 images, train/val/test splits)
+- Installed PyTorch CUDA 12.8 for RTX 3050
+- Generated initial whole-image YOLO labels
 
 ### Phase 2 – CNN Training
-- ✅ Built ResNet-50 fine-tuning pipeline with AMP
-- ✅ Implemented data augmentation (crop, flip, colour jitter, rotation)
-- ✅ Trained for 50 epochs with early stopping
-- ✅ Achieved **98% test accuracy** across 6 classes
-- ✅ Generated confusion matrix, training curves, classification report
+- Built ResNet-50 fine-tuning pipeline with AMP
+- Achieved 98% test accuracy across 6 classes
+- Generated confusion matrix, training curves, classification report
 
-### Phase 3 – GradCAM Label Generation
-- ✅ Implemented GradCAM on ResNet-50's layer4
-- ✅ Heatmap → binary mask → contour → tight bounding box
-- ✅ Progressive threshold fallback (0.40 → 0.30 → 0.20 → peak-based)
-- ✅ Generated 1,574 precise labels (27–49% box area vs 100% before)
-- ✅ Built `visualise_labels.py` to preview GradCAM boxes
+### Phase 3 – GradCAM Label Generation (v1)
+- Implemented standard GradCAM on ResNet-50 layer4
+- Generated 1,574 labels with 27-49% box area
 
-### Phase 4 – YOLOv8 Training
-- ✅ Configured YOLOv8m with GradCAM labels
-- ✅ Tuned augmentation to preserve tight boxes (reduced translate/scale)
-- ✅ Trained 120 epochs on GPU with AMP
-- ✅ Achieved **mAP50 = 0.9001**, Precision = 0.856, Recall = 0.853
-- ✅ Multiple training runs with progressive improvements
+### Phase 4 – GradCAM++ Improved Labels
+- Upgraded to GradCAM++ (sharper, more localised)
+- Added Gaussian blur smoothing
+- Per-class thresholds and max area caps
+- Reduced box area to 17-38% (82% improvement for Bird-drop)
 
-### Phase 5 – Inference & Damage Analysis
-- ✅ Built `predict.py` with full detection pipeline
-- ✅ Implemented damage percentage formula (class_weight × confidence)
-- ✅ Built rich bounding box drawing (class + confidence + damage% + severity bar)
-- ✅ Added summary panel at bottom of each image
-- ✅ Built suggestion sidebar with what/impact/fix per class
-- ✅ Tested on all 95 test images
+### Phase 5 – YOLOv8 Training (Multiple Runs)
+- 8 training runs total
+- Final model solar_v4: mAP50=0.913, Precision=0.919, Recall=0.881
+- 150 epochs, ~7 hours on RTX 3050
 
-### Phase 6 – Backend API
-- ✅ Flask REST API with 7 endpoints
-- ✅ Session-based authentication (register/login/logout)
-- ✅ `@login_required` decorator protecting all ML endpoints
-- ✅ Base64 image encoding for API response
-- ✅ Serves frontend from same server
+### Phase 6 – Inference & Damage Analysis
+- Built predict.py with full detection pipeline
+- Damage% formula with class weights
+- Rich bounding box drawing (thick corners, label pill, severity dot)
+- Slim summary bar at bottom of image
 
-### Phase 7 – Frontend Dashboard
-- ✅ Purple/violet themed dashboard (FinSet-inspired design)
-- ✅ 6 pages: Dashboard, Analyse, Results, History, Classes, Settings
-- ✅ Bar chart + donut chart (Canvas API, no external library)
-- ✅ Animated damage severity meter
-- ✅ Session scan history with stats
-- ✅ Responsive layout with sidebar navigation
+### Phase 7 – Backend API
+- Flask REST API with 20 endpoints
+- Session-based authentication
+- Google OAuth 2.0 (Authlib)
+- login_required decorator
 
-### Phase 8 – Authentication UI
-- ✅ Login page (Sleeknote-inspired split layout)
-- ✅ Signup page with password strength meter
-- ✅ SVG illustrations on right panel
-- ✅ Google OAuth button (UI placeholder)
-- ✅ Auth flow: unauthenticated → login → dashboard → logout
+### Phase 8 – MongoDB Integration
+- MongoDB Atlas free tier
+- 3 collections: users, reset_tokens, scan_history
+- TTL index on reset_tokens (auto-expire in 30 min)
+- In-memory fallback when MongoDB not configured
 
-### Phase 9 – GitHub
-- ✅ Initialised git repository
-- ✅ Created `.gitignore` (excludes weights, datasets, runs)
-- ✅ Wrote comprehensive `README.md`
-- ✅ 2 commits pushed to https://github.com/Shubhammadiwalar/repoproject1
+### Phase 9 – Forgot Password
+- Secure token generation (secrets.token_urlsafe(32))
+- Gmail SMTP email sending (flask-mail)
+- Network IP in reset link (works from phone)
+- Token validation + one-time use deletion
+
+### Phase 10 – Frontend Dashboard
+- Purple/violet themed dashboard (FinSet-inspired)
+- 6 pages with sidebar navigation
+- Canvas bar chart + donut chart
+- Animated damage severity meter
+- Clickable stat card arrows
+
+### Phase 11 – History & Modals
+- Clickable history rows open full diagnosis modal
+- Modal shows: zoomed image, damage meter, what/impact/fix
+- "View in Results Page" button in modal
+
+### Phase 12 – Farm/Aerial Detection
+- HSV colour segmentation to detect individual panels
+- Grid assignment (A1, B2, C3...)
+- Panel crop zoom for each defective panel
+- Visual grid map overlay
+
+### Phase 13 – PDF Report
+- ReportLab PDF generation
+- Contains: user info, annotated image, damage meter, diagnosis, detection table
+- Download button on Results page
+- Filename: SolarScan_ClassName_XX.Xpct.pdf
+
+### Phase 14 – Auth UI
+- Login page (Sleeknote split-layout design)
+- Signup page with password strength meter
+- Forgot/reset password pages
+- Google OAuth button
+
+### Phase 15 – GitHub
+- 17 commits pushed to https://github.com/Shubhammadiwalar/repoproject1
+- .gitignore excludes weights, datasets, .env, runs
 
 ---
 
@@ -678,17 +721,21 @@ python predict.py --source test --output predictions --conf 0.25
 
 | Model | Metric | Value |
 |-------|--------|-------|
-| ResNet-50 CNN | Test Accuracy | **98.0%** |
-| ResNet-50 CNN | Macro F1 | **0.98** |
-| YOLOv8m | mAP50 | **0.9001** |
-| YOLOv8m | mAP50-95 | **0.6190** |
-| YOLOv8m | Precision | **0.8561** |
-| YOLOv8m | Recall | **0.8534** |
-| GradCAM | Box area reduction | **51–73%** |
-| System | Total images | **1,569** |
-| System | Total code lines | **~5,400** |
+| ResNet-50 CNN | Test Accuracy | 98.0% |
+| ResNet-50 CNN | Macro F1 | 0.98 |
+| YOLOv8m (solar_v4) | mAP50 | 0.9126 |
+| YOLOv8m (solar_v4) | mAP50-95 | 0.7330 |
+| YOLOv8m (solar_v4) | Precision | 0.9194 |
+| YOLOv8m (solar_v4) | Recall | 0.8811 |
+| GradCAM++ | Box area reduction | 62-82% |
+| System | Total images | 1,569 |
+| System | Total code lines | ~8,224 |
+| System | Git commits | 17 |
+| System | API endpoints | 20 |
+| System | Frontend pages | 6 |
 
 ---
 
-*Report generated for SolarScan project — Solar Panel Defect Detection System*
+*SolarScan – Solar Panel Defect Detection System*
 *GitHub: https://github.com/Shubhammadiwalar/repoproject1*
+*Developer: Shubham Madiwalar | May 2026*
