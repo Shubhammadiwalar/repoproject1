@@ -147,16 +147,37 @@ async function runAnalysis() {
   form.append("conf", (parseInt($("confSlider").value)/100).toFixed(2));
 
   try {
-    const res  = await fetch(`${CONFIG.API_BASE}/api/predict`, { method:"POST", body:form });
+    const res = await fetch(`${CONFIG.API_BASE}/api/predict`, {
+      method: "POST", body: form, credentials: "include"
+    });
+
+    // Session expired — redirect to login
+    if (res.status === 401) {
+      window.location.href = "/login.html";
+      return;
+    }
+
+    // Check content type before parsing JSON
+    const ct = res.headers.get("content-type") || "";
+    if (!ct.includes("application/json")) {
+      addNotification("error", "Session expired. Please log in again.");
+      setTimeout(() => window.location.href = "/login.html", 1500);
+      return;
+    }
+
     const data = await res.json();
 
     // ── Not a solar panel ─────────────────────────────────────────────
     if (res.status === 422 && data.error === "not_solar_panel") {
       showNotPanelError(data.message, data.reason, data.suggestion);
+      addNotification("warning", `Upload rejected: ${data.message}`);
       return;
     }
 
-    if (!res.ok || data.error) { alert("Error: " + (data.error||"Unknown")); return; }
+    if (!res.ok || data.error) {
+      addNotification("error", data.error || "Detection failed.");
+      return;
+    }
 
     lastResult = { ...data, filename: selectedFile.name };
     addToHistory(data, selectedFile.name);
@@ -1116,7 +1137,19 @@ document.getElementById("analyseBtn").addEventListener("click", async function()
   form.append("conf", (parseInt($("confSlider").value)/100).toFixed(2));
 
   try {
-    const res  = await fetch(`${CONFIG.API_BASE}/api/predict`, { method:"POST", body:form });
+    const res = await fetch(`${CONFIG.API_BASE}/api/predict`, {
+      method: "POST", body: form, credentials: "include"
+    });
+
+    // Session expired
+    if (res.status === 401) { window.location.href = "/login.html"; return; }
+    const ct = res.headers.get("content-type") || "";
+    if (!ct.includes("application/json")) {
+      addNotification("error", "Session expired. Redirecting to login…");
+      setTimeout(() => window.location.href = "/login.html", 1500);
+      return;
+    }
+
     const data = await res.json();
 
     // ── Not a solar panel ─────────────────────────────────────
