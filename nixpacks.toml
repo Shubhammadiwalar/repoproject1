@@ -3,7 +3,7 @@ nixPkgs = ["python311", "python311Packages.pip", "libGL", "libGLU", "glib"]
 
 [phases.install]
 cmds = [
-  "python3 -m venv --without-pip /opt/venv",
+  "python3 -m venv /opt/venv",
   ". /opt/venv/bin/activate && pip install --upgrade pip",
   ". /opt/venv/bin/activate && pip install torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cpu",
   ". /opt/venv/bin/activate && pip install -r requirements.txt --no-deps --ignore-installed torch torchvision"
