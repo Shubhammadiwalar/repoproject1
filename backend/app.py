@@ -605,7 +605,6 @@ def google_callback():
 
 
 @app.route("/api/health", methods=["GET"])
-@login_required
 def health():
     return jsonify({
         "status":   "ok",
